@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
 import '../data/models/sync_queue_item.dart';
-import '../data/local/isar_schemas.dart';
-import '../data/local/isar_service.dart';
 import 'sync_scheduler.dart';
 import 'package:isar/isar.dart';
 

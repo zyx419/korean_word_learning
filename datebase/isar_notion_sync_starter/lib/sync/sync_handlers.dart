@@ -1,8 +1,6 @@
 import 'package:isar/isar.dart';
 import '../data/remote/notion_api.dart';
 import '../data/models/sentence.dart';
-import '../data/models/highlight.dart';
-import '../data/local/isar_service.dart';
 import 'sync_scheduler.dart';
 
 class SentenceSyncHandler implements SyncHandler {
