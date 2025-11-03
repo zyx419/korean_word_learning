@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local developer scripts (keep secrets out of VCS)
+*.local.ps1
+scripts.local/
