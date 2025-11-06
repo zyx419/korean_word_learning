@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar_notion_sync_starter/data/local/isar_service.dart';
+import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/ui/pages/welcome_page.dart';
 import 'package:isar_notion_sync_starter/ui/pages/learning_page.dart';
 import 'package:isar_notion_sync_starter/ui/pages/settings_page.dart';
@@ -21,6 +22,7 @@ void main() async {
     try {
       await isarService.init();
       if (kDebugMode) debugPrint('Isar initialized');
+      await NotionPullService(isarService.isar).pullAll();
     } catch (e, st) {
       debugPrint('Isar init error: $e');
       debugPrint('$st');

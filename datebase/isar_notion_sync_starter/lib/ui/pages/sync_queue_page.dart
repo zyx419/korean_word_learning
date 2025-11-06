@@ -94,7 +94,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
 
   Future<void> _retryFailed() async {
     final isar = isarService.isar;
-    final failed = await isar.syncQueueItems.filter().statusEqualTo('failed').findAll();
+    final failed =
+        await isar.syncQueueItems.filter().statusEqualTo('failed').findAll();
     await isar.writeTxn(() async {
       for (final it in failed) {
         it.status = 'pending';
@@ -106,7 +107,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
 
   Future<void> _cancelPending() async {
     final isar = isarService.isar;
-    final pending = await isar.syncQueueItems.filter().statusEqualTo('pending').findAll();
+    final pending =
+        await isar.syncQueueItems.filter().statusEqualTo('pending').findAll();
     await isar.writeTxn(() async {
       for (final it in pending) {
         it.status = 'canceled';
@@ -118,7 +120,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
 
   Future<void> _clearSuccess() async {
     final isar = isarService.isar;
-    final success = await isar.syncQueueItems.filter().statusEqualTo('success').findAll();
+    final success =
+        await isar.syncQueueItems.filter().statusEqualTo('success').findAll();
     await isar.writeTxn(() async {
       for (final it in success) {
         await isar.syncQueueItems.delete(it.id);
@@ -138,7 +141,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         actions: [
           IconButton(
             tooltip: '运行一次',
-            onPressed: (_inited && widget.itemsStream == null) ? _runOnce : null,
+            onPressed:
+                (_inited && widget.itemsStream == null) ? _runOnce : null,
             icon: const Icon(Icons.play_circle_outline),
           ),
           if (widget.itemsStream == null)
@@ -180,7 +184,8 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
                     child: StreamBuilder<List<SyncQueueItem>>(
                       stream: _stream,
                       builder: (context, snap) {
-                        final items = _applyFilters(snap.data ?? const <SyncQueueItem>[]);
+                        final items =
+                            _applyFilters(snap.data ?? const <SyncQueueItem>[]);
                         return Column(
                           children: [
                             _SummaryBar(items: items),
@@ -248,7 +253,13 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
           child: Row(
             children: [
               for (final s in const [
-                'all', 'pending', 'syncing', 'success', 'failed', 'canceled', 'skipped'
+                'all',
+                'pending',
+                'syncing',
+                'success',
+                'failed',
+                'canceled',
+                'skipped'
               ])
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -282,6 +293,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       ],
     );
   }
+
   List<SyncQueueItem> _applyFilters(List<SyncQueueItem> items) {
     Iterable<SyncQueueItem> it = items;
     if (_status != 'all') {
@@ -340,7 +352,8 @@ class _SummaryBar extends StatelessWidget {
   const _SummaryBar({required this.items});
   final List<SyncQueueItem> items;
 
-  int _count(String s) => s == 'all' ? items.length : items.where((e) => e.status == s).length;
+  int _count(String s) =>
+      s == 'all' ? items.length : items.where((e) => e.status == s).length;
 
   @override
   Widget build(BuildContext context) {
@@ -355,7 +368,10 @@ class _SummaryBar extends StatelessWidget {
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(children: [for (final c in chips) Padding(padding: const EdgeInsets.only(right: 8), child: c)]),
+      child: Row(children: [
+        for (final c in chips)
+          Padding(padding: const EdgeInsets.only(right: 8), child: c)
+      ]),
     );
   }
 
@@ -363,12 +379,15 @@ class _SummaryBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 6),
           Text('$label $count'),
         ],
@@ -378,7 +397,11 @@ class _SummaryBar extends StatelessWidget {
 }
 
 class _ItemTile extends StatefulWidget {
-  const _ItemTile({required this.item, required this.onRetry, required this.onCancel, required this.onDelete});
+  const _ItemTile(
+      {required this.item,
+      required this.onRetry,
+      required this.onCancel,
+      required this.onDelete});
   final SyncQueueItem item;
   final VoidCallback onRetry;
   final VoidCallback onCancel;
@@ -412,32 +435,52 @@ class _ItemTileState extends State<_ItemTile> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 6, right: 8), decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(top: 6, right: 8),
+                    decoration:
+                        BoxDecoration(color: color, shape: BoxShape.circle)),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${_entityLabel(it.entityType)} ${_opLabel(it.op)} · ${it.entityLocalKey}',
+                      Text(
+                          '${_entityLabel(it.entityType)} ${_opLabel(it.op)} · ${it.entityLocalKey}',
                           style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: 2),
-                      Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                      Text(subtitle,
+                          style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
                 Wrap(spacing: 4, children: [
                   _statusChip(it.status),
-                  IconButton(tooltip: '重试', onPressed: it.status == 'failed' ? widget.onRetry : null, icon: const Icon(Icons.refresh)),
-                  IconButton(tooltip: '取消', onPressed: it.status == 'pending' ? widget.onCancel : null, icon: const Icon(Icons.cancel_outlined)),
-                  IconButton(tooltip: '删除', onPressed: widget.onDelete, icon: const Icon(Icons.delete_outline)),
+                  IconButton(
+                      tooltip: '重试',
+                      onPressed: it.status == 'failed' ? widget.onRetry : null,
+                      icon: const Icon(Icons.refresh)),
+                  IconButton(
+                      tooltip: '取消',
+                      onPressed:
+                          it.status == 'pending' ? widget.onCancel : null,
+                      icon: const Icon(Icons.cancel_outlined)),
+                  IconButton(
+                      tooltip: '删除',
+                      onPressed: widget.onDelete,
+                      icon: const Icon(Icons.delete_outline)),
                 ]),
               ],
             ),
             if (_expanded) ...[
               const SizedBox(height: 8),
               _kv('远端ID', it.entityNotionPageId ?? '-'),
-              _kv('状态', '${_statusLabel(it.status)}  尝试 ${it.attempt}/${it.maxAttempt}'),
-              if (it.lastErrorMessage != null && it.lastErrorMessage!.isNotEmpty)
-                _kv('错误', '${it.lastErrorCode ?? 'ERROR'}: ${it.lastErrorMessage}'),
+              _kv('状态',
+                  '${_statusLabel(it.status)}  尝试 ${it.attempt}/${it.maxAttempt}'),
+              if (it.lastErrorMessage != null &&
+                  it.lastErrorMessage!.isNotEmpty)
+                _kv('错误',
+                    '${it.lastErrorCode ?? 'ERROR'}: ${it.lastErrorMessage}'),
               _kv('载荷', _prettyJson(it.payload)),
             ],
           ],
@@ -452,9 +495,12 @@ class _ItemTileState extends State<_ItemTile> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 64, child: Text(k, style: Theme.of(context).textTheme.bodySmall)),
+          SizedBox(
+              width: 64,
+              child: Text(k, style: Theme.of(context).textTheme.bodySmall)),
           const SizedBox(width: 8),
-          Expanded(child: Text(v, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+              child: Text(v, style: Theme.of(context).textTheme.bodySmall)),
         ],
       ),
     );
@@ -469,7 +515,8 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.task_alt_outlined, size: 40, color: Theme.of(context).disabledColor),
+          Icon(Icons.task_alt_outlined,
+              size: 40, color: Theme.of(context).disabledColor),
           const SizedBox(height: 8),
           Text('暂无任务', style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 8),
@@ -554,14 +601,14 @@ Widget _statusChip(String status) {
     padding: EdgeInsets.zero,
     visualDensity: VisualDensity.compact,
     label: Text(_statusLabel(status)),
-    backgroundColor: _statusColor(status).withOpacity(0.12),
-    side: BorderSide(color: _statusColor(status).withOpacity(0.4)),
+    backgroundColor: _statusColor(status).withValues(alpha: 0.12),
+    side: BorderSide(color: _statusColor(status).withValues(alpha: 0.4)),
   );
 }
 
 String _fmtTime(DateTime dt) {
   final d = dt.toLocal();
-  final two = (int n) => n.toString().padLeft(2, '0');
+  String two(int n) => n.toString().padLeft(2, '0');
   return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
 }
 
