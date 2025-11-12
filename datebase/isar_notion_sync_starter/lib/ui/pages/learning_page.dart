@@ -8,6 +8,7 @@ import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/main.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
+import 'package:isar_notion_sync_starter/sync/notion_push_service.dart';
 
 /// 单词学习页：支持阅读、句级操作、文本高亮与样式自定义。
 class LearningPage extends StatefulWidget {
@@ -24,6 +25,7 @@ class _LearningPageState extends State<LearningPage> {
   List<Sentence> _sentences = const [];
   Map<int, List<Highlight>> _highlightMap = const {};
   ReadingPrefs _prefs = ReadingPrefs();
+  NotionPushService? _pushService;
 
   StreamSubscription<List<Sentence>>? _sentenceSub;
   StreamSubscription<List<Highlight>>? _highlightSub;
@@ -44,6 +46,7 @@ class _LearningPageState extends State<LearningPage> {
     await isarService.init();
     _isar = isarService.isar;
     final isar = _isar!;
+    _pushService = NotionPushService(isar);
     var prefs = await isar.readingPrefs.get(1);
     if (prefs == null) {
       prefs = ReadingPrefs();
@@ -317,6 +320,7 @@ class _LearningPageState extends State<LearningPage> {
     if (sentenceId == null || _selection.isCollapsed) return;
     final sentence = await isar.sentences.get(sentenceId);
     if (sentence == null) return;
+    Highlight? createdHighlight;
     await isar.writeTxn(() async {
       sentence
         ..ensureExternalKey()
@@ -325,14 +329,21 @@ class _LearningPageState extends State<LearningPage> {
       final highlight = Highlight()
         ..sentenceLocalId = sentenceId
         ..sentenceExternalKey = sentence.externalKey
+        ..sentenceNotionPageId = sentence.notionPageId
+        ..ensureExternalKey()
         ..start = _selection.start
         ..end = _selection.end
         ..color = color
         ..note = _pendingNote
         ..updatedAtLocal = DateTime.now();
-      await isar.highlights.put(highlight);
+      final newId = await isar.highlights.put(highlight);
+      highlight.id = newId;
+      createdHighlight = highlight;
     });
     _exitSelectionMode();
+    if (createdHighlight != null) {
+      unawaited(_pushHighlightUpdate(createdHighlight!));
+    }
   }
 
   void _exitSelectionMode() {
@@ -429,15 +440,22 @@ class _LearningPageState extends State<LearningPage> {
     if (isar == null) return;
     if (result.delete) {
       await isar.writeTxn(() async {
-        await isar.highlights.delete(highlight.id);
+        final now = DateTime.now();
+        highlight.deletedAt = now;
+        highlight.updatedAtLocal = now;
+        highlight.ensureExternalKey();
+        await isar.highlights.put(highlight);
       });
+      unawaited(_pushHighlightDeletion(highlight));
     } else {
       await isar.writeTxn(() async {
         highlight.color = result.color ?? highlight.color;
         highlight.note = result.note;
         highlight.updatedAtLocal = DateTime.now();
+        highlight.ensureExternalKey();
         await isar.highlights.put(highlight);
       });
+      unawaited(_pushHighlightUpdate(highlight));
     }
   }
 
@@ -475,20 +493,65 @@ class _LearningPageState extends State<LearningPage> {
             ) ??
             false;
         if (!confirmed) return;
+        final relatedHighlights = await isar.highlights
+            .filter()
+            .sentenceLocalIdEqualTo(sentence.id)
+            .findAll();
         await isar.writeTxn(() async {
-          sentence.deletedAt = DateTime.now();
+          final now = DateTime.now();
+          sentence.deletedAt = now;
+          sentence.updatedAtLocal = now;
           await isar.sentences.put(sentence);
-          await isar.highlights
-              .filter()
-              .sentenceLocalIdEqualTo(sentence.id)
-              .deleteAll();
+          for (final h in relatedHighlights) {
+            h.deletedAt = now;
+            h.updatedAtLocal = now;
+            h.ensureExternalKey();
+            await isar.highlights.put(h);
+          }
         });
+        unawaited(_pushSentenceDeletion(sentence));
+        for (final h in relatedHighlights) {
+          unawaited(_pushHighlightDeletion(h));
+        }
         return;
     }
     sentence.updatedAtLocal = DateTime.now();
     await isar.writeTxn(() async {
       await isar.sentences.put(sentence);
     });
+  }
+
+  Future<void> _pushHighlightUpdate(Highlight highlight) async {
+    final service = _pushService;
+    if (service == null) return;
+    final result = await service.upsertHighlight(highlight);
+    if (!result.ok && result.message != null) {
+      _showSyncError(result.message!);
+    }
+  }
+
+  Future<void> _pushHighlightDeletion(Highlight highlight) async {
+    final service = _pushService;
+    if (service == null) return;
+    final result = await service.deleteHighlight(highlight);
+    if (!result.ok && result.message != null) {
+      _showSyncError(result.message!);
+    }
+  }
+
+  Future<void> _pushSentenceDeletion(Sentence sentence) async {
+    final service = _pushService;
+    if (service == null) return;
+    final result = await service.deleteSentence(sentence);
+    if (!result.ok && result.message != null) {
+      _showSyncError(result.message!);
+    }
+  }
+
+  void _showSyncError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showStylePanel(BuildContext context) async {

@@ -15,6 +15,8 @@ class Highlight {
 
   String? sentenceNotionPageId;
   String? sentenceExternalKey;
+  @Index(unique: true, replace: true, caseSensitive: false)
+  String? externalKey;
 
   @Index(composite: [CompositeIndex('end')])
   late int start;
@@ -32,41 +34,66 @@ class Highlight {
   @Index()
   DateTime? deletedAt;
 
-  Map<String, dynamic> toNotion(String? sentenceRemoteId) => {
-    'properties': {
-      'Sentence': {
-        'relation': sentenceRemoteId == null ? [] : [{'id': sentenceRemoteId}]
-      },
-      if (sentenceExternalKey != null && sentenceExternalKey!.isNotEmpty)
-        'SentenceExternalKey': {
-          'rich_text': [
-            {
-              'text': {'content': sentenceExternalKey}
-            }
-          ]
-        },
-      'RangeStart': {'number': start},
-      'RangeEnd': {'number': end},
-      'Color': {'select': {'name': color}},
-      if (note != null) 'Note': {'rich_text': [{'text': {'content': note}}]},
-    }
-  };
+  Map<String, dynamic> toNotion() => {
+        'properties': {
+          if (externalKey != null && externalKey!.isNotEmpty)
+            'ExternalKey': {
+              'rich_text': [
+                {
+                  'text': {'content': externalKey}
+                }
+              ]
+            },
+          if (sentenceExternalKey != null && sentenceExternalKey!.isNotEmpty)
+            'SentenceExternalKey': {
+              'title': [
+                {
+                  'text': {'content': sentenceExternalKey}
+                }
+              ]
+            },
+          'RangeStart': {'number': start},
+          'RangeEnd': {'number': end},
+          'Color': {
+            'rich_text': [
+              {
+                'text': {'content': color}
+              }
+            ]
+          },
+          if (note != null && note!.isNotEmpty)
+            'Note': {
+              'rich_text': [
+                {
+                  'text': {'content': note}
+                }
+              ]
+            },
+        }
+      };
 
   static Highlight fromNotion(Map<String, dynamic> page) {
     final h = Highlight();
     h.notionPageId = page['id'] as String?;
-    final rel = page['properties']?['Sentence']?['relation'];
+    final properties = page['properties'] as Map<String, dynamic>?;
+    h.externalKey =
+        readTextProperty(properties?['ExternalKey'] as Map<String, dynamic>?);
+    final rel = properties?['Sentence']?['relation'];
     if (rel is List && rel.isNotEmpty) {
       h.sentenceNotionPageId = rel[0]?['id'] as String?;
     }
-    final properties = page['properties'] as Map<String, dynamic>?;
     h.sentenceExternalKey = readTextProperty(
         properties?['SentenceExternalKey'] as Map<String, dynamic>?);
-    h.start = (page['properties']?['RangeStart']?['number'] ?? 0) as int;
-    h.end = (page['properties']?['RangeEnd']?['number'] ?? 0) as int;
-    h.color = (page['properties']?['Color']?['select']?['name'] ?? 'yellow') as String;
-    h.note = page['properties']?['Note']?['rich_text']?[0]?['plain_text'] as String?;
+    h.start = (properties?['RangeStart']?['number'] ?? 0) as int;
+    h.end = (properties?['RangeEnd']?['number'] ?? 0) as int;
+    h.color = readTextProperty(properties?['Color'] as Map<String, dynamic>?) ??
+        (properties?['Color']?['select']?['name'] ?? 'yellow') as String;
+    h.note = readTextProperty(properties?['Note'] as Map<String, dynamic>?);
     h.updatedAtRemote = DateTime.tryParse(page['last_edited_time'] ?? '');
     return h;
+  }
+
+  void ensureExternalKey() {
+    externalKey ??= 'hl-${DateTime.now().microsecondsSinceEpoch}';
   }
 }

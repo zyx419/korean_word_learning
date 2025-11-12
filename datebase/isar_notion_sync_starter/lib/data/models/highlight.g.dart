@@ -32,43 +32,48 @@ const HighlightSchema = CollectionSchema(
       name: r'end',
       type: IsarType.long,
     ),
-    r'note': PropertySchema(
+    r'externalKey': PropertySchema(
       id: 3,
+      name: r'externalKey',
+      type: IsarType.string,
+    ),
+    r'note': PropertySchema(
+      id: 4,
       name: r'note',
       type: IsarType.string,
     ),
     r'notionPageId': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'notionPageId',
       type: IsarType.string,
     ),
     r'sentenceExternalKey': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'sentenceExternalKey',
       type: IsarType.string,
     ),
     r'sentenceLocalId': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'sentenceLocalId',
       type: IsarType.long,
     ),
     r'sentenceNotionPageId': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'sentenceNotionPageId',
       type: IsarType.string,
     ),
     r'start': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'start',
       type: IsarType.long,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -101,6 +106,19 @@ const HighlightSchema = CollectionSchema(
         IndexPropertySchema(
           name: r'sentenceLocalId',
           type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'externalKey': IndexSchema(
+      id: 4573241076244886543,
+      name: r'externalKey',
+      unique: true,
+      replace: true,
+      properties: [
+        IndexPropertySchema(
+          name: r'externalKey',
+          type: IndexType.hash,
           caseSensitive: false,
         )
       ],
@@ -179,6 +197,12 @@ int _highlightEstimateSize(
   var bytesCount = offsets.last;
   bytesCount += 3 + object.color.length * 3;
   {
+    final value = object.externalKey;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.note;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -214,14 +238,15 @@ void _highlightSerialize(
   writer.writeString(offsets[0], object.color);
   writer.writeDateTime(offsets[1], object.deletedAt);
   writer.writeLong(offsets[2], object.end);
-  writer.writeString(offsets[3], object.note);
-  writer.writeString(offsets[4], object.notionPageId);
-  writer.writeString(offsets[5], object.sentenceExternalKey);
-  writer.writeLong(offsets[6], object.sentenceLocalId);
-  writer.writeString(offsets[7], object.sentenceNotionPageId);
-  writer.writeLong(offsets[8], object.start);
-  writer.writeDateTime(offsets[9], object.updatedAtLocal);
-  writer.writeDateTime(offsets[10], object.updatedAtRemote);
+  writer.writeString(offsets[3], object.externalKey);
+  writer.writeString(offsets[4], object.note);
+  writer.writeString(offsets[5], object.notionPageId);
+  writer.writeString(offsets[6], object.sentenceExternalKey);
+  writer.writeLong(offsets[7], object.sentenceLocalId);
+  writer.writeString(offsets[8], object.sentenceNotionPageId);
+  writer.writeLong(offsets[9], object.start);
+  writer.writeDateTime(offsets[10], object.updatedAtLocal);
+  writer.writeDateTime(offsets[11], object.updatedAtRemote);
 }
 
 Highlight _highlightDeserialize(
@@ -234,15 +259,16 @@ Highlight _highlightDeserialize(
   object.color = reader.readString(offsets[0]);
   object.deletedAt = reader.readDateTimeOrNull(offsets[1]);
   object.end = reader.readLong(offsets[2]);
+  object.externalKey = reader.readStringOrNull(offsets[3]);
   object.id = id;
-  object.note = reader.readStringOrNull(offsets[3]);
-  object.notionPageId = reader.readStringOrNull(offsets[4]);
-  object.sentenceExternalKey = reader.readStringOrNull(offsets[5]);
-  object.sentenceLocalId = reader.readLong(offsets[6]);
-  object.sentenceNotionPageId = reader.readStringOrNull(offsets[7]);
-  object.start = reader.readLong(offsets[8]);
-  object.updatedAtLocal = reader.readDateTime(offsets[9]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[10]);
+  object.note = reader.readStringOrNull(offsets[4]);
+  object.notionPageId = reader.readStringOrNull(offsets[5]);
+  object.sentenceExternalKey = reader.readStringOrNull(offsets[6]);
+  object.sentenceLocalId = reader.readLong(offsets[7]);
+  object.sentenceNotionPageId = reader.readStringOrNull(offsets[8]);
+  object.start = reader.readLong(offsets[9]);
+  object.updatedAtLocal = reader.readDateTime(offsets[10]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[11]);
   return object;
 }
 
@@ -266,14 +292,16 @@ P _highlightDeserializeProp<P>(
     case 5:
       return (reader.readStringOrNull(offset)) as P;
     case 6:
-      return (reader.readLong(offset)) as P;
-    case 7:
       return (reader.readStringOrNull(offset)) as P;
-    case 8:
+    case 7:
       return (reader.readLong(offset)) as P;
+    case 8:
+      return (reader.readStringOrNull(offset)) as P;
     case 9:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 10:
+      return (reader.readDateTime(offset)) as P;
+    case 11:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -345,6 +373,60 @@ extension HighlightByIndex on IsarCollection<Highlight> {
   List<Id> putAllByNotionPageIdSync(List<Highlight> objects,
       {bool saveLinks = true}) {
     return putAllByIndexSync(r'notionPageId', objects, saveLinks: saveLinks);
+  }
+
+  Future<Highlight?> getByExternalKey(String? externalKey) {
+    return getByIndex(r'externalKey', [externalKey]);
+  }
+
+  Highlight? getByExternalKeySync(String? externalKey) {
+    return getByIndexSync(r'externalKey', [externalKey]);
+  }
+
+  Future<bool> deleteByExternalKey(String? externalKey) {
+    return deleteByIndex(r'externalKey', [externalKey]);
+  }
+
+  bool deleteByExternalKeySync(String? externalKey) {
+    return deleteByIndexSync(r'externalKey', [externalKey]);
+  }
+
+  Future<List<Highlight?>> getAllByExternalKey(
+      List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return getAllByIndex(r'externalKey', values);
+  }
+
+  List<Highlight?> getAllByExternalKeySync(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'externalKey', values);
+  }
+
+  Future<int> deleteAllByExternalKey(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'externalKey', values);
+  }
+
+  int deleteAllByExternalKeySync(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'externalKey', values);
+  }
+
+  Future<Id> putByExternalKey(Highlight object) {
+    return putByIndex(r'externalKey', object);
+  }
+
+  Id putByExternalKeySync(Highlight object, {bool saveLinks = true}) {
+    return putByIndexSync(r'externalKey', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByExternalKey(List<Highlight> objects) {
+    return putAllByIndex(r'externalKey', objects);
+  }
+
+  List<Id> putAllByExternalKeySync(List<Highlight> objects,
+      {bool saveLinks = true}) {
+    return putAllByIndexSync(r'externalKey', objects, saveLinks: saveLinks);
   }
 }
 
@@ -610,6 +692,71 @@ extension HighlightQueryWhere
         upper: [upperSentenceLocalId],
         includeUpper: includeUpper,
       ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterWhereClause> externalKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'externalKey',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterWhereClause> externalKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'externalKey',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterWhereClause> externalKeyEqualTo(
+      String? externalKey) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'externalKey',
+        value: [externalKey],
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterWhereClause> externalKeyNotEqualTo(
+      String? externalKey) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [],
+              upper: [externalKey],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [externalKey],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [externalKey],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [],
+              upper: [externalKey],
+              includeUpper: false,
+            ));
+      }
     });
   }
 
@@ -1296,6 +1443,158 @@ extension HighlightQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'externalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'externalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'externalKey',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition> externalKeyMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'externalKey',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'externalKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      externalKeyIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'externalKey',
+        value: '',
       ));
     });
   }
@@ -2243,6 +2542,18 @@ extension HighlightQuerySortBy on QueryBuilder<Highlight, Highlight, QSortBy> {
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> sortByExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> sortByExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.desc);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QAfterSortBy> sortByNote() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'note', Sort.asc);
@@ -2381,6 +2692,18 @@ extension HighlightQuerySortThenBy
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> thenByExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> thenByExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.desc);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QAfterSortBy> thenById() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.asc);
@@ -2514,6 +2837,13 @@ extension HighlightQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QDistinct> distinctByExternalKey(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'externalKey', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QDistinct> distinctByNote(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -2592,6 +2922,12 @@ extension HighlightQueryProperty
   QueryBuilder<Highlight, int, QQueryOperations> endProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'end');
+    });
+  }
+
+  QueryBuilder<Highlight, String?, QQueryOperations> externalKeyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'externalKey');
     });
   }
 
