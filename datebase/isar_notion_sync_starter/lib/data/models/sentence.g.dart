@@ -27,29 +27,34 @@ const SentenceSchema = CollectionSchema(
       name: r'deletedAt',
       type: IsarType.dateTime,
     ),
-    r'familiarState': PropertySchema(
+    r'externalKey': PropertySchema(
       id: 2,
+      name: r'externalKey',
+      type: IsarType.string,
+    ),
+    r'familiarState': PropertySchema(
+      id: 3,
       name: r'familiarState',
       type: IsarType.string,
       enumMap: _SentencefamiliarStateEnumValueMap,
     ),
     r'notionPageId': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'notionPageId',
       type: IsarType.string,
     ),
     r'text': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'text',
       type: IsarType.string,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -70,6 +75,19 @@ const SentenceSchema = CollectionSchema(
           name: r'notionPageId',
           type: IndexType.hash,
           caseSensitive: true,
+        )
+      ],
+    ),
+    r'externalKey': IndexSchema(
+      id: 4573241076244886543,
+      name: r'externalKey',
+      unique: true,
+      replace: true,
+      properties: [
+        IndexPropertySchema(
+          name: r'externalKey',
+          type: IndexType.hash,
+          caseSensitive: false,
         )
       ],
     ),
@@ -114,6 +132,12 @@ int _sentenceEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  {
+    final value = object.externalKey;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.familiarState.name.length * 3;
   {
     final value = object.notionPageId;
@@ -133,11 +157,12 @@ void _sentenceSerialize(
 ) {
   writer.writeDateTime(offsets[0], object.createdAt);
   writer.writeDateTime(offsets[1], object.deletedAt);
-  writer.writeString(offsets[2], object.familiarState.name);
-  writer.writeString(offsets[3], object.notionPageId);
-  writer.writeString(offsets[4], object.text);
-  writer.writeDateTime(offsets[5], object.updatedAtLocal);
-  writer.writeDateTime(offsets[6], object.updatedAtRemote);
+  writer.writeString(offsets[2], object.externalKey);
+  writer.writeString(offsets[3], object.familiarState.name);
+  writer.writeString(offsets[4], object.notionPageId);
+  writer.writeString(offsets[5], object.text);
+  writer.writeDateTime(offsets[6], object.updatedAtLocal);
+  writer.writeDateTime(offsets[7], object.updatedAtRemote);
 }
 
 Sentence _sentenceDeserialize(
@@ -149,14 +174,15 @@ Sentence _sentenceDeserialize(
   final object = Sentence();
   object.createdAt = reader.readDateTime(offsets[0]);
   object.deletedAt = reader.readDateTimeOrNull(offsets[1]);
+  object.externalKey = reader.readStringOrNull(offsets[2]);
   object.familiarState =
-      _SentencefamiliarStateValueEnumMap[reader.readStringOrNull(offsets[2])] ??
+      _SentencefamiliarStateValueEnumMap[reader.readStringOrNull(offsets[3])] ??
           FamiliarState.familiar;
   object.id = id;
-  object.notionPageId = reader.readStringOrNull(offsets[3]);
-  object.text = reader.readString(offsets[4]);
-  object.updatedAtLocal = reader.readDateTime(offsets[5]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[6]);
+  object.notionPageId = reader.readStringOrNull(offsets[4]);
+  object.text = reader.readString(offsets[5]);
+  object.updatedAtLocal = reader.readDateTime(offsets[6]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[7]);
   return object;
 }
 
@@ -172,16 +198,18 @@ P _sentenceDeserializeProp<P>(
     case 1:
       return (reader.readDateTimeOrNull(offset)) as P;
     case 2:
+      return (reader.readStringOrNull(offset)) as P;
+    case 3:
       return (_SentencefamiliarStateValueEnumMap[
               reader.readStringOrNull(offset)] ??
           FamiliarState.familiar) as P;
-    case 3:
-      return (reader.readStringOrNull(offset)) as P;
     case 4:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 6:
+      return (reader.readDateTime(offset)) as P;
+    case 7:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -264,6 +292,59 @@ extension SentenceByIndex on IsarCollection<Sentence> {
   List<Id> putAllByNotionPageIdSync(List<Sentence> objects,
       {bool saveLinks = true}) {
     return putAllByIndexSync(r'notionPageId', objects, saveLinks: saveLinks);
+  }
+
+  Future<Sentence?> getByExternalKey(String? externalKey) {
+    return getByIndex(r'externalKey', [externalKey]);
+  }
+
+  Sentence? getByExternalKeySync(String? externalKey) {
+    return getByIndexSync(r'externalKey', [externalKey]);
+  }
+
+  Future<bool> deleteByExternalKey(String? externalKey) {
+    return deleteByIndex(r'externalKey', [externalKey]);
+  }
+
+  bool deleteByExternalKeySync(String? externalKey) {
+    return deleteByIndexSync(r'externalKey', [externalKey]);
+  }
+
+  Future<List<Sentence?>> getAllByExternalKey(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return getAllByIndex(r'externalKey', values);
+  }
+
+  List<Sentence?> getAllByExternalKeySync(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'externalKey', values);
+  }
+
+  Future<int> deleteAllByExternalKey(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'externalKey', values);
+  }
+
+  int deleteAllByExternalKeySync(List<String?> externalKeyValues) {
+    final values = externalKeyValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'externalKey', values);
+  }
+
+  Future<Id> putByExternalKey(Sentence object) {
+    return putByIndex(r'externalKey', object);
+  }
+
+  Id putByExternalKeySync(Sentence object, {bool saveLinks = true}) {
+    return putByIndexSync(r'externalKey', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByExternalKey(List<Sentence> objects) {
+    return putAllByIndex(r'externalKey', objects);
+  }
+
+  List<Id> putAllByExternalKeySync(List<Sentence> objects,
+      {bool saveLinks = true}) {
+    return putAllByIndexSync(r'externalKey', objects, saveLinks: saveLinks);
   }
 }
 
@@ -408,6 +489,71 @@ extension SentenceQueryWhere on QueryBuilder<Sentence, Sentence, QWhereClause> {
               indexName: r'notionPageId',
               lower: [],
               upper: [notionPageId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterWhereClause> externalKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'externalKey',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterWhereClause> externalKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'externalKey',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterWhereClause> externalKeyEqualTo(
+      String? externalKey) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'externalKey',
+        value: [externalKey],
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterWhereClause> externalKeyNotEqualTo(
+      String? externalKey) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [],
+              upper: [externalKey],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [externalKey],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [externalKey],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'externalKey',
+              lower: [],
+              upper: [externalKey],
               includeUpper: false,
             ));
       }
@@ -669,6 +815,155 @@ extension SentenceQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'externalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition>
+      externalKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'externalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition>
+      externalKeyGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'externalKey',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'externalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'externalKey',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> externalKeyIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'externalKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition>
+      externalKeyIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'externalKey',
+        value: '',
       ));
     });
   }
@@ -1301,6 +1596,18 @@ extension SentenceQuerySortBy on QueryBuilder<Sentence, Sentence, QSortBy> {
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.desc);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByFamiliarState() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'familiarState', Sort.asc);
@@ -1385,6 +1692,18 @@ extension SentenceQuerySortThenBy
   QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByDeletedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'deletedAt', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'externalKey', Sort.desc);
     });
   }
 
@@ -1475,6 +1794,13 @@ extension SentenceQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QDistinct> distinctByExternalKey(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'externalKey', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QDistinct> distinctByFamiliarState(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1527,6 +1853,12 @@ extension SentenceQueryProperty
   QueryBuilder<Sentence, DateTime?, QQueryOperations> deletedAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'deletedAt');
+    });
+  }
+
+  QueryBuilder<Sentence, String?, QQueryOperations> externalKeyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'externalKey');
     });
   }
 

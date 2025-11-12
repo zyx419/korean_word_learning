@@ -13,7 +13,7 @@ class IsarService {
   Future<void> init() async {
     if (_inited) return;
     final dir = await getApplicationDocumentsDirectory();
-    isar = await Isar.open(allSchemas, directory: dir.path, inspector: false);
+    isar = await Isar.open(allSchemas, directory: dir.path, inspector: true);
     _inited = true;
   }
 }

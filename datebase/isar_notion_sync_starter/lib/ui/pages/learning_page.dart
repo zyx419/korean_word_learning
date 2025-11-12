@@ -7,6 +7,7 @@ import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/main.dart';
+import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 
 /// 单词学习页：支持阅读、句级操作、文本高亮与样式自定义。
 class LearningPage extends StatefulWidget {
@@ -18,6 +19,7 @@ class LearningPage extends StatefulWidget {
 
 class _LearningPageState extends State<LearningPage> {
   bool _loading = true;
+  bool _syncingRemote = false;
   Isar? _isar;
   List<Sentence> _sentences = const [];
   Map<int, List<Highlight>> _highlightMap = const {};
@@ -78,6 +80,21 @@ class _LearningPageState extends State<LearningPage> {
       }
       setState(() => _highlightMap = map);
     });
+
+    unawaited(_refreshFromNotion());
+  }
+
+  Future<void> _refreshFromNotion() async {
+    final isar = _isar;
+    if (isar == null || _syncingRemote || !mounted) return;
+    setState(() => _syncingRemote = true);
+    try {
+      await NotionPullService(isar).pullAll();
+    } finally {
+      if (mounted) {
+        setState(() => _syncingRemote = false);
+      }
+    }
   }
 
   @override
@@ -152,37 +169,52 @@ class _LearningPageState extends State<LearningPage> {
   }
 
   Widget _buildSentenceArea() {
+    final Widget content;
     if (_sentences.isEmpty) {
-      return const _EmptyState();
+      content = const _EmptyState();
+    } else {
+      content = ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _sentences.length,
+        separatorBuilder: (_, __) =>
+            SizedBox(height: _prefs.paragraphSpacing.toDouble()),
+        itemBuilder: (context, index) {
+          final sentence = _sentences[index];
+          final highlights = _highlightMap[sentence.id] ?? const [];
+          return _SentenceBlock(
+            sentence: sentence,
+            highlights: highlights,
+            prefs: _prefs,
+            selectionMode:
+                _selectionMode && _selectionSentenceId == sentence.id,
+            onSelectionChanged: (selection, cause) =>
+                _handleSelection(sentence.id, selection, cause),
+            onHighlightTap: _editHighlight,
+            onAction: (action) => _handleSentenceAction(sentence, action),
+          );
+        },
+      );
     }
 
     return Stack(
       children: [
-        ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: _sentences.length,
-          separatorBuilder: (_, __) =>
-              SizedBox(height: _prefs.paragraphSpacing.toDouble()),
-          itemBuilder: (context, index) {
-            final sentence = _sentences[index];
-            final highlights = _highlightMap[sentence.id] ?? const [];
-            return _SentenceBlock(
-              sentence: sentence,
-              highlights: highlights,
-              prefs: _prefs,
-              selectionMode:
-                  _selectionMode && _selectionSentenceId == sentence.id,
-              onSelectionChanged: (selection, cause) =>
-                  _handleSelection(sentence.id, selection, cause),
-              onHighlightTap: _editHighlight,
-              onAction: (action) => _handleSentenceAction(sentence, action),
-            );
-          },
-        ),
-        if (_selectionMode)
+        content,
+        if (_selectionMode && _sentences.isNotEmpty)
           _SelectionBanner(
               onCancel: _exitSelectionMode, onDone: _commitSelectionDraft),
-        if (_selectionMode) _buildSelectionPalette(),
+        if (_selectionMode && _sentences.isNotEmpty) _buildSelectionPalette(),
+        if (_syncingRemote)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: SizedBox(
+                height: 2,
+                child: LinearProgressIndicator(),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -283,14 +315,21 @@ class _LearningPageState extends State<LearningPage> {
     if (isar == null) return;
     final sentenceId = _selectionSentenceId;
     if (sentenceId == null || _selection.isCollapsed) return;
-    final highlight = Highlight()
-      ..sentenceLocalId = sentenceId
-      ..start = _selection.start
-      ..end = _selection.end
-      ..color = color
-      ..note = _pendingNote
-      ..updatedAtLocal = DateTime.now();
+    final sentence = await isar.sentences.get(sentenceId);
+    if (sentence == null) return;
     await isar.writeTxn(() async {
+      sentence
+        ..ensureExternalKey()
+        ..updatedAtLocal = DateTime.now();
+      await isar.sentences.put(sentence);
+      final highlight = Highlight()
+        ..sentenceLocalId = sentenceId
+        ..sentenceExternalKey = sentence.externalKey
+        ..start = _selection.start
+        ..end = _selection.end
+        ..color = color
+        ..note = _pendingNote
+        ..updatedAtLocal = DateTime.now();
       await isar.highlights.put(highlight);
     });
     _exitSelectionMode();

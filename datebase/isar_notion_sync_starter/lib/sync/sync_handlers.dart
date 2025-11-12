@@ -15,6 +15,12 @@ class SentenceSyncHandler implements SyncHandler {
       final id = int.parse(job.entityLocalKey);
       final entity = await isar.sentences.get(id);
       if (entity == null) return const SyncResult.err('NOT_FOUND', 'local sentence missing');
+      if (entity.externalKey == null || entity.externalKey!.isEmpty) {
+        await isar.writeTxn(() async {
+          entity.ensureExternalKey();
+          await isar.sentences.put(entity);
+        });
+      }
 
       if (job.op == 'delete') {
         // 这里可改为 Notion archive 或直接忽略

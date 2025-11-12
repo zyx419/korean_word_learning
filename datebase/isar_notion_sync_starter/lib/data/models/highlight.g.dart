@@ -42,28 +42,33 @@ const HighlightSchema = CollectionSchema(
       name: r'notionPageId',
       type: IsarType.string,
     ),
-    r'sentenceLocalId': PropertySchema(
+    r'sentenceExternalKey': PropertySchema(
       id: 5,
+      name: r'sentenceExternalKey',
+      type: IsarType.string,
+    ),
+    r'sentenceLocalId': PropertySchema(
+      id: 6,
       name: r'sentenceLocalId',
       type: IsarType.long,
     ),
     r'sentenceNotionPageId': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'sentenceNotionPageId',
       type: IsarType.string,
     ),
     r'start': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'start',
       type: IsarType.long,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -186,6 +191,12 @@ int _highlightEstimateSize(
     }
   }
   {
+    final value = object.sentenceExternalKey;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.sentenceNotionPageId;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -205,11 +216,12 @@ void _highlightSerialize(
   writer.writeLong(offsets[2], object.end);
   writer.writeString(offsets[3], object.note);
   writer.writeString(offsets[4], object.notionPageId);
-  writer.writeLong(offsets[5], object.sentenceLocalId);
-  writer.writeString(offsets[6], object.sentenceNotionPageId);
-  writer.writeLong(offsets[7], object.start);
-  writer.writeDateTime(offsets[8], object.updatedAtLocal);
-  writer.writeDateTime(offsets[9], object.updatedAtRemote);
+  writer.writeString(offsets[5], object.sentenceExternalKey);
+  writer.writeLong(offsets[6], object.sentenceLocalId);
+  writer.writeString(offsets[7], object.sentenceNotionPageId);
+  writer.writeLong(offsets[8], object.start);
+  writer.writeDateTime(offsets[9], object.updatedAtLocal);
+  writer.writeDateTime(offsets[10], object.updatedAtRemote);
 }
 
 Highlight _highlightDeserialize(
@@ -225,11 +237,12 @@ Highlight _highlightDeserialize(
   object.id = id;
   object.note = reader.readStringOrNull(offsets[3]);
   object.notionPageId = reader.readStringOrNull(offsets[4]);
-  object.sentenceLocalId = reader.readLong(offsets[5]);
-  object.sentenceNotionPageId = reader.readStringOrNull(offsets[6]);
-  object.start = reader.readLong(offsets[7]);
-  object.updatedAtLocal = reader.readDateTime(offsets[8]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[9]);
+  object.sentenceExternalKey = reader.readStringOrNull(offsets[5]);
+  object.sentenceLocalId = reader.readLong(offsets[6]);
+  object.sentenceNotionPageId = reader.readStringOrNull(offsets[7]);
+  object.start = reader.readLong(offsets[8]);
+  object.updatedAtLocal = reader.readDateTime(offsets[9]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[10]);
   return object;
 }
 
@@ -251,14 +264,16 @@ P _highlightDeserializeProp<P>(
     case 4:
       return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readLong(offset)) as P;
-    case 6:
       return (reader.readStringOrNull(offset)) as P;
-    case 7:
+    case 6:
       return (reader.readLong(offset)) as P;
+    case 7:
+      return (reader.readStringOrNull(offset)) as P;
     case 8:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 9:
+      return (reader.readDateTime(offset)) as P;
+    case 10:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1638,6 +1653,160 @@ extension HighlightQueryFilter
   }
 
   QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'sentenceExternalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'sentenceExternalKey',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'sentenceExternalKey',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'sentenceExternalKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'sentenceExternalKey',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'sentenceExternalKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
+      sentenceExternalKeyIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'sentenceExternalKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterFilterCondition>
       sentenceLocalIdEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -2098,6 +2267,19 @@ extension HighlightQuerySortBy on QueryBuilder<Highlight, Highlight, QSortBy> {
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> sortBySentenceExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sentenceExternalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterSortBy>
+      sortBySentenceExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sentenceExternalKey', Sort.desc);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QAfterSortBy> sortBySentenceLocalId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sentenceLocalId', Sort.asc);
@@ -2235,6 +2417,19 @@ extension HighlightQuerySortThenBy
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QAfterSortBy> thenBySentenceExternalKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sentenceExternalKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Highlight, Highlight, QAfterSortBy>
+      thenBySentenceExternalKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sentenceExternalKey', Sort.desc);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QAfterSortBy> thenBySentenceLocalId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sentenceLocalId', Sort.asc);
@@ -2333,6 +2528,14 @@ extension HighlightQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Highlight, Highlight, QDistinct> distinctBySentenceExternalKey(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'sentenceExternalKey',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Highlight, Highlight, QDistinct> distinctBySentenceLocalId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'sentenceLocalId');
@@ -2401,6 +2604,13 @@ extension HighlightQueryProperty
   QueryBuilder<Highlight, String?, QQueryOperations> notionPageIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'notionPageId');
+    });
+  }
+
+  QueryBuilder<Highlight, String?, QQueryOperations>
+      sentenceExternalKeyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'sentenceExternalKey');
     });
   }
 
