@@ -4,14 +4,17 @@ import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/data/remote/notion_api.dart';
+import 'package:isar_notion_sync_starter/sync/sync_scheduler.dart';
 import 'package:isar_notion_sync_starter/utils/app_logger.dart';
 
 /// Pushes local mutations (highlight updates, sentence deletions, etc.) to Notion.
 class NotionPushService {
-  NotionPushService(this._isar);
+  NotionPushService(this._isar, {SyncScheduler? scheduler})
+      : _scheduler = scheduler;
 
   final Isar _isar;
   final AppLogger _logger = AppLogger.instance;
+  final SyncScheduler? _scheduler;
 
   Future<NotionPushResult> upsertHighlight(Highlight highlight) async {
     final ctx = await _loadContext();
@@ -22,6 +25,7 @@ class NotionPushService {
     if (dbId == null || dbId.isEmpty) {
       return const NotionPushResult.error('未绑定高亮数据库，无法同步。');
     }
+    final isCreate = highlight.notionPageId == null;
     try {
       final generatedKey =
           highlight.externalKey == null || highlight.externalKey!.isEmpty;
@@ -31,7 +35,6 @@ class NotionPushService {
       final payload = highlight.toNotion();
       _logger.debug('Pushing highlight to Notion',
           data: {'id': highlight.id, 'body': payload});
-      final isCreate = highlight.notionPageId == null;
       final resp = isCreate
           ? await ctx.api.createPage(dbId, payload)
           : await ctx.api.updatePage(highlight.notionPageId!, payload);
@@ -54,6 +57,20 @@ class NotionPushService {
     } catch (e, st) {
       _logger.error('Failed to push highlight ${highlight.id}',
           error: e, stackTrace: st);
+      await _enqueueFailure(
+        entityType: 'highlight',
+        op: isCreate ? 'create' : 'update',
+        localKey: '${highlight.id}',
+        remoteId: highlight.notionPageId,
+        payload: {
+          'externalKey': highlight.externalKey,
+          'sentenceExternalKey': highlight.sentenceExternalKey,
+          'color': highlight.color,
+          'start': highlight.start,
+          'end': highlight.end,
+        },
+        error: e,
+      );
       return NotionPushResult.error('同步高亮到 Notion 失败：$e');
     }
   }
@@ -82,6 +99,17 @@ class NotionPushService {
     } catch (e, st) {
       _logger.error('Failed to delete highlight ${highlight.id} remotely',
           error: e, stackTrace: st);
+      await _enqueueFailure(
+        entityType: 'highlight',
+        op: 'delete',
+        localKey: '${highlight.id}',
+        remoteId: highlight.notionPageId,
+        payload: {
+          'externalKey': highlight.externalKey,
+          'sentenceExternalKey': highlight.sentenceExternalKey,
+        },
+        error: e,
+      );
       return NotionPushResult.error('删除高亮时同步 Notion 失败：$e');
     }
   }
@@ -110,6 +138,17 @@ class NotionPushService {
     } catch (e, st) {
       _logger.error('Failed to delete sentence ${sentence.id} remotely',
           error: e, stackTrace: st);
+      await _enqueueFailure(
+        entityType: 'sentence',
+        op: 'delete',
+        localKey: '${sentence.id}',
+        remoteId: sentence.notionPageId,
+        payload: {
+          'externalKey': sentence.externalKey,
+          'text': sentence.text,
+        },
+        error: e,
+      );
       return NotionPushResult.error('删除句子时同步 Notion 失败：$e');
     }
   }
@@ -128,6 +167,36 @@ class NotionPushService {
   }
 
   String? _normalizeDbId(String? id) => (id == null || id.isEmpty) ? null : id;
+
+  Future<void> _enqueueFailure({
+    required String entityType,
+    required String op,
+    required String localKey,
+    required Object error,
+    String? remoteId,
+    Map<String, dynamic>? payload,
+  }) async {
+    final scheduler = _scheduler;
+    if (scheduler == null) return;
+    try {
+      await scheduler.enqueue(
+        entityType: entityType,
+        op: op,
+        entityLocalKey: localKey,
+        remoteId: remoteId,
+        payload: {
+          ...?payload,
+          'lastError': '$error',
+        },
+        priority: 5,
+      );
+    } catch (e, st) {
+      _logger.error('Failed to enqueue sync job',
+          error: e,
+          stackTrace: st,
+          data: {'entityType': entityType, 'op': op, 'localKey': localKey});
+    }
+  }
 }
 
 class _NotionContext {
