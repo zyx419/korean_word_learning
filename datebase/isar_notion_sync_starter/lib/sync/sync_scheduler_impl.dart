@@ -24,6 +24,9 @@ class SyncSchedulerImpl implements SyncScheduler {
     String? remoteId,
     Map<String, dynamic>? payload,
     int priority = 0,
+    String status = 'pending',
+    String? errorCode,
+    String? errorMessage,
   }) async {
     final item = SyncQueueItem()
       ..queueId = 'sq_${DateTime.now().microsecondsSinceEpoch}'
@@ -32,10 +35,12 @@ class SyncSchedulerImpl implements SyncScheduler {
       ..entityLocalKey = entityLocalKey
       ..entityNotionPageId = remoteId
       ..payload = jsonEncode(payload ?? {})
-      ..status = 'pending'
+      ..status = status
       ..priority = priority
       ..createdAt = DateTime.now()
-      ..updatedAt = DateTime.now();
+      ..updatedAt = DateTime.now()
+      ..lastErrorCode = errorCode
+      ..lastErrorMessage = errorMessage;
 
     await _isar.writeTxn(() async => await _isar.syncQueueItems.put(item));
   }

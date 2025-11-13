@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
 import 'package:isar_notion_sync_starter/main.dart';
+import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 
 class SyncQueuePage extends StatefulWidget {
@@ -19,6 +21,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
   late final SyncSchedulerImpl _scheduler;
   Stream<List<SyncQueueItem>>? _stream;
   bool _inited = false;
+  static const Duration _syncTimeout = Duration(seconds: 10);
 
   // UI filters
   String _status = 'all';
@@ -42,6 +45,10 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
   Future<void> _init() async {
     await isarService.init();
     _scheduler = SyncSchedulerImpl(isarService.isar);
+    final retryHandler = NotionRetrySyncHandler(isarService.isar);
+    _scheduler
+      ..registerHandler('highlight', retryHandler)
+      ..registerHandler('sentence', retryHandler);
     _buildStream();
     setState(() => _inited = true);
   }
@@ -74,6 +81,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       item.updatedAt = DateTime.now();
       await isar.syncQueueItems.put(item);
     });
+    await _triggerSync();
   }
 
   Future<void> _cancelItem(SyncQueueItem item) async {
@@ -103,6 +111,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         await isar.syncQueueItems.put(it);
       }
     });
+    await _triggerSync();
   }
 
   Future<void> _cancelPending() async {
@@ -345,6 +354,38 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       return list;
     }
     return RefreshIndicator(onRefresh: () async => _runOnce(), child: list);
+  }
+
+  Future<void> _triggerSync() async {
+    if (widget.itemsStream != null) return;
+    await _resetTimedOutJobs();
+    try {
+      await _scheduler.runOnce().timeout(_syncTimeout);
+    } on TimeoutException {
+      await _resetTimedOutJobs(force: true);
+      if (mounted) {
+        _snack('同步超时，已重置任务状态');
+      }
+    }
+  }
+
+  Future<void> _resetTimedOutJobs({bool force = false}) async {
+    final isar = isarService.isar;
+    final cutoff = DateTime.now().subtract(_syncTimeout);
+    final stuck = await isar.syncQueueItems
+        .filter()
+        .statusEqualTo('syncing')
+        .updatedAtLessThan(force ? DateTime.now() : cutoff)
+        .findAll();
+    if (stuck.isEmpty) return;
+    await isar.writeTxn(() async {
+      final now = DateTime.now();
+      for (final it in stuck) {
+        it.status = 'pending';
+        it.updatedAt = now;
+        await isar.syncQueueItems.put(it);
+      }
+    });
   }
 }
 

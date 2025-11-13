@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
@@ -70,6 +72,9 @@ class NotionPushService {
           'end': highlight.end,
         },
         error: e,
+        status: 'failed',
+        errorCode: 'PUSH',
+        errorMessage: '$e',
       );
       return NotionPushResult.error('同步高亮到 Notion 失败：$e');
     }
@@ -109,6 +114,9 @@ class NotionPushService {
           'sentenceExternalKey': highlight.sentenceExternalKey,
         },
         error: e,
+        status: 'failed',
+        errorCode: 'PUSH',
+        errorMessage: '$e',
       );
       return NotionPushResult.error('删除高亮时同步 Notion 失败：$e');
     }
@@ -148,6 +156,9 @@ class NotionPushService {
           'text': sentence.text,
         },
         error: e,
+        status: 'failed',
+        errorCode: 'PUSH',
+        errorMessage: '$e',
       );
       return NotionPushResult.error('删除句子时同步 Notion 失败：$e');
     }
@@ -175,6 +186,9 @@ class NotionPushService {
     required Object error,
     String? remoteId,
     Map<String, dynamic>? payload,
+    String status = 'failed',
+    String? errorCode,
+    String? errorMessage,
   }) async {
     final scheduler = _scheduler;
     if (scheduler == null) return;
@@ -189,7 +203,11 @@ class NotionPushService {
           'lastError': '$error',
         },
         priority: 5,
+        status: status,
+        errorCode: errorCode,
+        errorMessage: errorMessage,
       );
+      unawaited(scheduler.runOnce());
     } catch (e, st) {
       _logger.error('Failed to enqueue sync job',
           error: e,

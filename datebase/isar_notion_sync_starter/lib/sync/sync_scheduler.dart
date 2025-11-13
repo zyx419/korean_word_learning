@@ -1,11 +1,14 @@
 abstract class SyncScheduler {
   Future<void> enqueue({
     required String entityType, // sentence/highlight/pref
-    required String op,         // create/update/delete
+    required String op, // create/update/delete
     required String entityLocalKey,
     String? remoteId,
     Map<String, dynamic>? payload,
     int priority = 0,
+    String status = 'pending',
+    String? errorCode,
+    String? errorMessage,
   });
 
   Future<void> runOnce();
@@ -24,7 +27,8 @@ class SyncJob {
   final String? remoteId;
   final Map<String, dynamic>? payload;
   final String entityLocalKey;
-  SyncJob(this.entityType, this.op, this.entityLocalKey, {this.remoteId, this.payload});
+  SyncJob(this.entityType, this.op, this.entityLocalKey,
+      {this.remoteId, this.payload});
 }
 
 class SyncResult {
@@ -34,7 +38,11 @@ class SyncResult {
   final String? errorCode;
   final String? errorMessage;
   const SyncResult.ok({this.newRemoteId, this.remoteEditedAt})
-      : ok = true, errorCode = null, errorMessage = null;
+      : ok = true,
+        errorCode = null,
+        errorMessage = null;
   const SyncResult.err(this.errorCode, this.errorMessage)
-      : ok = false, newRemoteId = null, remoteEditedAt = null;
+      : ok = false,
+        newRemoteId = null,
+        remoteEditedAt = null;
 }

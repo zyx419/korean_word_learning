@@ -9,6 +9,7 @@ import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/main.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_push_service.dart';
+import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 
 /// 单词学习页：支持阅读、句级操作、文本高亮与样式自定义。
@@ -48,8 +49,13 @@ class _LearningPageState extends State<LearningPage> {
     await isarService.init();
     _isar = isarService.isar;
     final isar = _isar!;
-    _scheduler = SyncSchedulerImpl(isar);
-    _pushService = NotionPushService(isar, scheduler: _scheduler);
+    final scheduler = SyncSchedulerImpl(isar);
+    final retryHandler = NotionRetrySyncHandler(isar);
+    scheduler
+      ..registerHandler('highlight', retryHandler)
+      ..registerHandler('sentence', retryHandler);
+    _scheduler = scheduler;
+    _pushService = NotionPushService(isar, scheduler: scheduler);
     var prefs = await isar.readingPrefs.get(1);
     if (prefs == null) {
       prefs = ReadingPrefs();
