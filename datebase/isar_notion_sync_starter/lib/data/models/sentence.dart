@@ -27,22 +27,45 @@ class Sentence {
   DateTime? updatedAtRemote;
   DateTime createdAt = DateTime.now();
   DateTime? deletedAt;
+  String? extra;
 
   Map<String, dynamic> toNotion() => {
-    'properties': {
-      'Title': { 'title': [ { 'text': { 'content': text } } ] },
-      'Familiar': { 'select': { 'name': familiarState.name } },
-      'Created': { 'date': { 'start': createdAt.toIso8601String() } },
-      if (externalKey != null && externalKey!.isNotEmpty)
-        'ExternalKey': {
-          'rich_text': [
-            {
-              'text': {'content': externalKey}
-            }
-          ]
-        },
-    }
-  };
+        'properties': {
+          'Title': {
+            'title': [
+              {
+                'text': {'content': text}
+              }
+            ]
+          },
+          'Familiar': {
+            'rich_text': [
+              {
+                'text': {'content': familiarState.name}
+              }
+            ]
+          },
+          'Created': {
+            'date': {'start': createdAt.toIso8601String()}
+          },
+          if (externalKey != null && externalKey!.isNotEmpty)
+            'ExternalKey': {
+              'rich_text': [
+                {
+                  'text': {'content': externalKey}
+                }
+              ]
+            },
+          if (extra != null && extra!.isNotEmpty)
+            'Extra': {
+              'rich_text': [
+                {
+                  'text': {'content': extra}
+                }
+              ]
+            },
+        }
+      };
 
   static Sentence fromNotion(Map<String, dynamic> page) {
     final s = Sentence();
@@ -50,9 +73,12 @@ class Sentence {
     final properties = page['properties'] as Map<String, dynamic>?;
     s.externalKey =
         readTextProperty(properties?['ExternalKey'] as Map<String, dynamic>?);
-    s.text = (page['properties']?['Title']?['title']?[0]?['plain_text'] ?? '') as String;
-    final fam = page['properties']?['Familiar']?['select']?['name'] as String?;
-    if (fam != null) {
+    s.text = (page['properties']?['Title']?['title']?[0]?['plain_text'] ?? '')
+        as String;
+    final fam =
+        readTextProperty(properties?['Familiar'] as Map<String, dynamic>?) ??
+            properties?['Familiar']?['select']?['name'] as String?;
+    if (fam != null && fam.isNotEmpty) {
       s.familiarState = FamiliarState.values.firstWhere(
         (e) => e.name == fam,
         orElse: () => FamiliarState.neutral,
@@ -63,6 +89,7 @@ class Sentence {
     if (createdAt != null) {
       s.createdAt = createdAt;
     }
+    s.extra = readTextProperty(properties?['Extra'] as Map<String, dynamic>?);
     return s;
   }
 

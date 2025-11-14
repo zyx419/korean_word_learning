@@ -38,10 +38,18 @@ class _LearningPageState extends State<LearningPage> {
   TextSelection _selection =
       const TextSelection(baseOffset: -1, extentOffset: -1);
   String? _pendingNote;
+  bool _bulkSelectMode = false;
+  final Set<int> _selectedSentenceIds = {};
+  FamiliarState? _filterState;
+  late final ScrollController _scrollController;
+  bool _scrollRestored = false;
+  double _lastScrollOffset = 0;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScrollChanged);
     _init();
   }
 
@@ -64,6 +72,7 @@ class _LearningPageState extends State<LearningPage> {
       });
     }
     _prefs = prefs;
+    _lastScrollOffset = prefs.scrollOffset;
 
     _sentenceSub = isar.sentences
         .where()
@@ -76,6 +85,7 @@ class _LearningPageState extends State<LearningPage> {
         _sentences = list;
         _loading = false;
       });
+      _maybeRestoreScroll();
     });
 
     _highlightSub = isar.highlights
@@ -113,6 +123,9 @@ class _LearningPageState extends State<LearningPage> {
   void dispose() {
     _sentenceSub?.cancel();
     _highlightSub?.cancel();
+    _persistScrollOffset();
+    _scrollController.removeListener(_onScrollChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -140,11 +153,83 @@ class _LearningPageState extends State<LearningPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
+            if (_bulkSelectMode)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Center(
+                    child: Text('已选 ${_selectedSentenceIds.length}',
+                        style: Theme.of(context).textTheme.bodyMedium)),
+              ),
             IconButton(
-              tooltip: '阅读样式',
-              icon: const Icon(Icons.tune),
-              onPressed: () => _showStylePanel(context),
+              tooltip: _bulkSelectMode ? '退出批量' : '批量选择',
+              icon: Icon(
+                  _bulkSelectMode ? Icons.close : Icons.check_box_outlined),
+              onPressed: _toggleBulkSelectMode,
             ),
+            PopupMenuButton<FamiliarState?>(
+              tooltip: '筛选熟练度',
+              icon: Icon(
+                Icons.filter_list,
+                color: _filterState == null
+                    ? null
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              onSelected: (value) => setState(() => _filterState = value),
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: null, child: Text('全部熟练度')),
+                ...FamiliarState.values.map(
+                  (state) => PopupMenuItem(
+                    value: state,
+                    child: Text(state.name),
+                  ),
+                ),
+              ],
+            ),
+            if (_bulkSelectMode) ...[
+              IconButton(
+                tooltip: '标熟',
+                onPressed: () =>
+                    _applyBulkSentenceAction(_SentenceAction.markFamiliar),
+                icon: const Icon(Icons.thumb_up_alt_outlined),
+              ),
+              IconButton(
+                tooltip: '标不熟',
+                onPressed: () =>
+                    _applyBulkSentenceAction(_SentenceAction.markUnfamiliar),
+                icon: const Icon(Icons.warning_amber_outlined),
+              ),
+              IconButton(
+                tooltip: '标一般',
+                onPressed: () =>
+                    _applyBulkSentenceAction(_SentenceAction.markNeutral),
+                icon: const Icon(Icons.circle_outlined),
+              ),
+              IconButton(
+                tooltip: '批量删除',
+                onPressed: () =>
+                    _applyBulkSentenceAction(_SentenceAction.delete),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ] else ...[
+              PopupMenuButton<String>(
+                tooltip: '页面设置',
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'import':
+                      _showImportDialog();
+                      break;
+                    case 'style':
+                      _showStylePanel(context);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'import', child: Text('导入句子')),
+                  PopupMenuItem(value: 'style', child: Text('阅读样式')),
+                ],
+              ),
+            ],
           ],
         ),
         body: _loading
@@ -181,28 +266,74 @@ class _LearningPageState extends State<LearningPage> {
   }
 
   Widget _buildSentenceArea() {
+    final items = _filterSentences(_sentences);
     final Widget content;
-    if (_sentences.isEmpty) {
+    if (items.isEmpty) {
       content = const _EmptyState();
     } else {
       content = ListView.separated(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
-        itemCount: _sentences.length,
+        itemCount: items.length,
         separatorBuilder: (_, __) =>
             SizedBox(height: _prefs.paragraphSpacing.toDouble()),
         itemBuilder: (context, index) {
-          final sentence = _sentences[index];
+          final sentence = items[index];
           final highlights = _highlightMap[sentence.id] ?? const [];
-          return _SentenceBlock(
-            sentence: sentence,
-            highlights: highlights,
-            prefs: _prefs,
-            selectionMode:
-                _selectionMode && _selectionSentenceId == sentence.id,
-            onSelectionChanged: (selection, cause) =>
-                _handleSelection(sentence.id, selection, cause),
-            onHighlightTap: _editHighlight,
-            onAction: (action) => _handleSentenceAction(sentence, action),
+          return Dismissible(
+            key: ValueKey(sentence.id),
+            direction: _bulkSelectMode
+                ? DismissDirection.none
+                : DismissDirection.horizontal,
+            confirmDismiss: (direction) {
+              if (_bulkSelectMode) return Future.value(false);
+              if (direction == DismissDirection.endToStart) {
+                return _handleSwipeFamiliar(sentence);
+              } else if (direction == DismissDirection.startToEnd) {
+                return _confirmSwipeDelete(sentence);
+              }
+              return Future.value(false);
+            },
+            background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              color: Colors.red.withValues(alpha: 0.2),
+              child: Row(
+                children: const [
+                  Icon(Icons.delete_outline, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('删除句子'),
+                ],
+              ),
+            ),
+            secondaryBackground: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: const [
+                  Text('提升熟练度'),
+                  SizedBox(width: 8),
+                  Icon(Icons.trending_up),
+                ],
+              ),
+            ),
+            child: _SentenceBlock(
+              sentence: sentence,
+              highlights: highlights,
+              prefs: _prefs,
+              selectionMode:
+                  _selectionMode && _selectionSentenceId == sentence.id,
+              bulkSelectMode: _bulkSelectMode,
+              bulkSelected: _selectedSentenceIds.contains(sentence.id),
+              onBulkSelectChanged: (selected) =>
+                  _toggleBulkSelection(sentence.id, selected),
+              onSelectionChanged: (selection, cause) =>
+                  _handleSelection(sentence.id, selection, cause),
+              onHighlightTap: _editHighlight,
+              onAction: (action) => _handleSentenceAction(sentence, action),
+            ),
           );
         },
       );
@@ -211,10 +342,7 @@ class _LearningPageState extends State<LearningPage> {
     return Stack(
       children: [
         content,
-        if (_selectionMode && _sentences.isNotEmpty)
-          _SelectionBanner(
-              onCancel: _exitSelectionMode, onDone: _commitSelectionDraft),
-        if (_selectionMode && _sentences.isNotEmpty) _buildSelectionPalette(),
+        if (_selectionMode && items.isNotEmpty) _buildSelectionPalette(),
         if (_syncingRemote)
           const Positioned(
             top: 0,
@@ -229,6 +357,11 @@ class _LearningPageState extends State<LearningPage> {
           ),
       ],
     );
+  }
+
+  List<Sentence> _filterSentences(List<Sentence> source) {
+    if (_filterState == null) return source;
+    return source.where((s) => s.familiarState == _filterState).toList();
   }
 
   void _handleSelection(
@@ -265,7 +398,20 @@ class _LearningPageState extends State<LearningPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('颜色与备注', style: Theme.of(context).textTheme.titleSmall),
+                Row(
+                  children: [
+                    Text('颜色与备注',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const Spacer(),
+                    TextButton(
+                        onPressed: _exitSelectionMode, child: const Text('取消')),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _commitSelectionDraft,
+                      child: const Text('完成'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 12,
@@ -474,14 +620,14 @@ class _LearningPageState extends State<LearningPage> {
     if (isar == null) return;
     switch (action) {
       case _SentenceAction.markFamiliar:
-        sentence.familiarState = FamiliarState.familiar;
-        break;
+        await _updateSentenceFamiliar(sentence, FamiliarState.familiar);
+        return;
       case _SentenceAction.markUnfamiliar:
-        sentence.familiarState = FamiliarState.unfamiliar;
-        break;
+        await _updateSentenceFamiliar(sentence, FamiliarState.unfamiliar);
+        return;
       case _SentenceAction.markNeutral:
-        sentence.familiarState = FamiliarState.neutral;
-        break;
+        await _updateSentenceFamiliar(sentence, FamiliarState.neutral);
+        return;
       case _SentenceAction.delete:
         final confirmed = await showDialog<bool>(
               context: context,
@@ -502,32 +648,10 @@ class _LearningPageState extends State<LearningPage> {
             ) ??
             false;
         if (!confirmed) return;
-        final relatedHighlights = await isar.highlights
-            .filter()
-            .sentenceLocalIdEqualTo(sentence.id)
-            .findAll();
-        await isar.writeTxn(() async {
-          final now = DateTime.now();
-          sentence.deletedAt = now;
-          sentence.updatedAtLocal = now;
-          await isar.sentences.put(sentence);
-          for (final h in relatedHighlights) {
-            h.deletedAt = now;
-            h.updatedAtLocal = now;
-            h.ensureExternalKey();
-            await isar.highlights.put(h);
-          }
-        });
-        unawaited(_pushSentenceDeletion(sentence));
-        for (final h in relatedHighlights) {
-          unawaited(_pushHighlightDeletion(h));
-        }
+        await _deleteSentence(sentence);
+        await _reloadSentences();
         return;
     }
-    sentence.updatedAtLocal = DateTime.now();
-    await isar.writeTxn(() async {
-      await isar.sentences.put(sentence);
-    });
   }
 
   Future<void> _pushHighlightUpdate(Highlight highlight) async {
@@ -563,6 +687,421 @@ class _LearningPageState extends State<LearningPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _onScrollChanged() {
+    _lastScrollOffset = _scrollController.offset;
+  }
+
+  void _toggleBulkSelectMode() {
+    setState(() {
+      if (_bulkSelectMode) {
+        _selectedSentenceIds.clear();
+      }
+      _bulkSelectMode = !_bulkSelectMode;
+    });
+  }
+
+  void _toggleBulkSelection(int sentenceId, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedSentenceIds.add(sentenceId);
+      } else {
+        _selectedSentenceIds.remove(sentenceId);
+      }
+    });
+  }
+
+  Future<void> _showImportDialog() async {
+    final controller = TextEditingController();
+    FamiliarState selected = FamiliarState.unfamiliar;
+    final result = await showDialog<_ImportPayload>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('导入句子'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  maxLines: 8,
+                  decoration: const InputDecoration(
+                    hintText: '每行一个句子；空行或仅符号会被忽略',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButton<FamiliarState>(
+                  value: selected,
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => selected = value);
+                    }
+                  },
+                  items: FamiliarState.values
+                      .map((state) => DropdownMenuItem(
+                          value: state, child: Text(state.name)))
+                      .toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                    context, _ImportPayload(controller.text.trim(), selected)),
+                child: const Text('导入'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+    if (result == null || result.content.isEmpty) return;
+    await _importSentences(result.content,
+        defaultState: result.defaultFamiliar);
+  }
+
+  Future<void> _importSentences(String raw,
+      {FamiliarState defaultState = FamiliarState.unfamiliar}) async {
+    final isar = _isar;
+    if (isar == null) return;
+    final RegExp meaningful = RegExp(r'[\p{Letter}\p{Number}]', unicode: true);
+    final lines = raw.split(RegExp(r'\r?\n'));
+    final seenTexts = <String>{};
+    final sentences = <Sentence>[];
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      final structured = _parseStructuredSentenceLine(trimmed, defaultState);
+      if (structured != null) {
+        sentences.add(structured);
+        continue;
+      }
+      if (!meaningful.hasMatch(trimmed)) continue;
+      final key = trimmed.toLowerCase();
+      if (!seenTexts.add(key)) continue;
+      final sentence = Sentence()
+        ..text = trimmed
+        ..createdAt = DateTime.now()
+        ..familiarState = defaultState
+        ..updatedAtLocal = DateTime.now();
+      sentence.ensureExternalKey();
+      sentences.add(sentence);
+    }
+    sentences.removeWhere((s) => !meaningful.hasMatch(s.text));
+    if (sentences.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有可导入的有效句子')),
+        );
+      }
+      return;
+    }
+    await isar.writeTxn(() async {
+      for (final sentence in sentences) {
+        final id = await isar.sentences.put(sentence);
+        sentence.id = id;
+      }
+    });
+    await _reloadSentences();
+    final push = _pushService;
+    if (push != null) {
+      for (final sentence in sentences) {
+        await push.upsertSentence(sentence);
+      }
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('已导入 ${sentences.length} 条句子')));
+  }
+
+  Future<void> _applyBulkSentenceAction(_SentenceAction action) async {
+    if (!_bulkSelectMode || _selectedSentenceIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先选择句子')));
+      return;
+    }
+    if (action == _SentenceAction.delete) {
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('批量删除'),
+              content:
+                  Text('确认删除选中的 ${_selectedSentenceIds.length} 条句子吗？此操作不可撤销。'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('取消')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('删除'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+    }
+    final isar = _isar;
+    if (isar == null) return;
+    final ids = List<int>.from(_selectedSentenceIds);
+    final push = _pushService;
+    final toUpsert = <Sentence>[];
+    final toDelete = <Sentence>[];
+    await isar.writeTxn(() async {
+      for (final id in ids) {
+        final sentence = await isar.sentences.get(id);
+        if (sentence == null) continue;
+        switch (action) {
+          case _SentenceAction.markFamiliar:
+            sentence.familiarState = FamiliarState.familiar;
+            sentence.updatedAtLocal = DateTime.now();
+            await isar.sentences.put(sentence);
+            toUpsert.add(sentence);
+            break;
+          case _SentenceAction.markUnfamiliar:
+            sentence.familiarState = FamiliarState.unfamiliar;
+            sentence.updatedAtLocal = DateTime.now();
+            await isar.sentences.put(sentence);
+            toUpsert.add(sentence);
+            break;
+          case _SentenceAction.markNeutral:
+            sentence.familiarState = FamiliarState.neutral;
+            sentence.updatedAtLocal = DateTime.now();
+            await isar.sentences.put(sentence);
+            toUpsert.add(sentence);
+            break;
+          case _SentenceAction.delete:
+            toDelete.add(sentence);
+            break;
+        }
+      }
+    });
+    if (push != null) {
+      for (final sentence in toUpsert) {
+        await push.upsertSentence(sentence);
+      }
+    }
+    for (final sentence in toDelete) {
+      await _deleteSentence(sentence);
+    }
+    await _reloadSentences();
+    setState(() {
+      _selectedSentenceIds.clear();
+      _bulkSelectMode = false;
+    });
+  }
+
+  Sentence? _parseStructuredSentenceLine(
+      String line, FamiliarState defaultState) {
+    final fields = _splitCsvLine(line);
+    if (fields.length < 5) return null;
+    final headerCheck = fields.map((f) => f.trim().toLowerCase()).toList();
+    if (headerCheck[0] == 'title' && headerCheck[1] == 'created') {
+      return null;
+    }
+    final text = fields[0].trim();
+    if (text.isEmpty) return null;
+    final createdRaw = fields[1].trim();
+    final externalKey = fields[2].trim();
+    final extra = fields[3].trim();
+    final familiarRaw = fields[4].trim();
+    final sentence = Sentence()
+      ..text = text
+      ..createdAt = _parseCreatedAt(createdRaw) ?? DateTime.now()
+      ..familiarState =
+          familiarRaw.isEmpty ? defaultState : _parseFamiliar(familiarRaw)
+      ..extra = extra.isEmpty ? null : extra
+      ..updatedAtLocal = DateTime.now();
+    if (externalKey.isNotEmpty) {
+      sentence.externalKey = externalKey;
+    }
+    sentence.ensureExternalKey();
+    return sentence;
+  }
+
+  DateTime? _parseCreatedAt(String raw) {
+    if (raw.isEmpty) return null;
+    try {
+      return DateTime.parse(raw).toLocal();
+    } catch (_) {}
+    final regex = RegExp(
+        r'^(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})\s*\((?:GMT|UTC)([+-]\d+)\)$');
+    final match = regex.firstMatch(raw);
+    if (match != null) {
+      final year = int.parse(match.group(1)!);
+      final month = int.parse(match.group(2)!);
+      final day = int.parse(match.group(3)!);
+      final hour = int.parse(match.group(4)!);
+      final minute = int.parse(match.group(5)!);
+      final offsetHours = int.tryParse(match.group(6)!);
+      var utc = DateTime.utc(year, month, day, hour, minute);
+      if (offsetHours != null) {
+        utc = utc.subtract(Duration(hours: offsetHours));
+      }
+      return utc.toLocal();
+    }
+    return null;
+  }
+
+  FamiliarState _parseFamiliar(String raw) {
+    final value = raw.trim().toLowerCase();
+    return FamiliarState.values.firstWhere(
+      (e) => e.name.toLowerCase() == value,
+      orElse: () => FamiliarState.neutral,
+    );
+  }
+
+  List<String> _splitCsvLine(String line) {
+    final result = <String>[];
+    var buffer = StringBuffer();
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      final char = line[i];
+      if (char == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          buffer.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (char == ',' && !inQuotes) {
+        result.add(buffer.toString());
+        buffer = StringBuffer();
+      } else {
+        buffer.write(char);
+      }
+    }
+    result.add(buffer.toString());
+    return result;
+  }
+
+  Future<void> _reloadSentences() async {
+    final isar = _isar;
+    if (isar == null) return;
+    final items = await isar.sentences.where().anyId().findAll();
+    final list = items.where((e) => e.deletedAt == null).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (!mounted) return;
+    setState(() => _sentences = list);
+  }
+
+  void _maybeRestoreScroll() {
+    if (_scrollRestored) return;
+    if (!_scrollController.hasClients) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _maybeRestoreScroll());
+      return;
+    }
+    final max = _scrollController.position.maxScrollExtent;
+    final target = _prefs.scrollOffset.clamp(0, max).toDouble();
+    _scrollController.jumpTo(target);
+    _scrollRestored = true;
+  }
+
+  Future<void> _persistScrollOffset() async {
+    final isar = _isar;
+    if (isar == null) return;
+    _prefs.scrollOffset = _lastScrollOffset;
+    await isar.writeTxn(() async {
+      await isar.readingPrefs.put(_prefs);
+    });
+  }
+
+  Future<bool> _handleSwipeFamiliar(Sentence sentence) async {
+    final next = _nextFamiliarState(sentence.familiarState);
+    if (next == sentence.familiarState) return false;
+    await _updateSentenceFamiliar(sentence, next);
+    return false;
+  }
+
+  Future<bool> _confirmSwipeDelete(Sentence sentence) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('删除句子'),
+            content: const Text('确认删除此句子？此操作不可撤销。'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消')),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('确认删除'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (confirmed) {
+      await _deleteSentence(sentence);
+      await _reloadSentences();
+    }
+    return false;
+  }
+
+  Future<void> _updateSentenceFamiliar(Sentence sentence, FamiliarState state,
+      {bool reload = true}) async {
+    final isar = _isar;
+    if (isar == null) return;
+    sentence.familiarState = state;
+    sentence.updatedAtLocal = DateTime.now();
+    await isar.writeTxn(() async {
+      await isar.sentences.put(sentence);
+    });
+    final push = _pushService;
+    if (push != null) {
+      await push.upsertSentence(sentence);
+    }
+    if (reload) {
+      await _reloadSentences();
+    }
+  }
+
+  Future<void> _deleteSentence(Sentence sentence) async {
+    final isar = _isar;
+    if (isar == null) return;
+    final relatedHighlights = await isar.highlights
+        .filter()
+        .sentenceLocalIdEqualTo(sentence.id)
+        .findAll();
+    await isar.writeTxn(() async {
+      final now = DateTime.now();
+      sentence.deletedAt = now;
+      sentence.updatedAtLocal = now;
+      await isar.sentences.put(sentence);
+      for (final h in relatedHighlights) {
+        h.deletedAt = now;
+        h.updatedAtLocal = now;
+        h.ensureExternalKey();
+        await isar.highlights.put(h);
+      }
+    });
+    unawaited(_pushSentenceDeletion(sentence));
+    for (final h in relatedHighlights) {
+      unawaited(_pushHighlightDeletion(h));
+    }
+  }
+
+  FamiliarState _nextFamiliarState(FamiliarState current) {
+    switch (current) {
+      case FamiliarState.unfamiliar:
+        return FamiliarState.neutral;
+      case FamiliarState.neutral:
+        return FamiliarState.familiar;
+      case FamiliarState.familiar:
+        return FamiliarState.familiar;
+    }
+  }
+
   Future<void> _showStylePanel(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -588,6 +1127,7 @@ class _LearningPageState extends State<LearningPage> {
   Future<void> _updatePrefs(ReadingPrefs prefs) async {
     final isar = _isar;
     if (isar == null) return;
+    prefs.scrollOffset = _lastScrollOffset;
     await isar.writeTxn(() async {
       await isar.readingPrefs.put(prefs);
     });
@@ -604,15 +1144,21 @@ class _SentenceBlock extends StatefulWidget {
     required this.onHighlightTap,
     required this.onAction,
     required this.selectionMode,
+    required this.bulkSelectMode,
+    required this.bulkSelected,
+    required this.onBulkSelectChanged,
   });
 
   final Sentence sentence;
   final List<Highlight> highlights;
   final ReadingPrefs prefs;
   final bool selectionMode;
+  final bool bulkSelectMode;
+  final bool bulkSelected;
   final void Function(TextSelection, SelectionChangedCause?) onSelectionChanged;
   final ValueChanged<Highlight> onHighlightTap;
   final ValueChanged<_SentenceAction> onAction;
+  final ValueChanged<bool> onBulkSelectChanged;
 
   @override
   State<_SentenceBlock> createState() => _SentenceBlockState();
@@ -661,11 +1207,13 @@ class _SentenceBlockState extends State<_SentenceBlock> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LeadActionsButton(
-                  familiarState: widget.sentence.familiarState,
-                  onSelected: widget.onAction,
-                ),
-                const SizedBox(width: 12),
+                if (widget.bulkSelectMode)
+                  Checkbox(
+                    value: widget.bulkSelected,
+                    onChanged: (val) =>
+                        widget.onBulkSelectChanged(val ?? false),
+                  ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: SelectableText.rich(
                     TextSpan(children: spans),
@@ -748,88 +1296,30 @@ class _SentenceBlockState extends State<_SentenceBlock> {
   }
 }
 
-class _LeadActionsButton extends StatelessWidget {
-  const _LeadActionsButton(
-      {required this.familiarState, required this.onSelected});
-  final FamiliarState familiarState;
-  final ValueChanged<_SentenceAction> onSelected;
-
-  Color _stateColor(BuildContext context) {
-    switch (familiarState) {
-      case FamiliarState.familiar:
-        return Colors.green;
-      case FamiliarState.unfamiliar:
-        return Colors.orange;
-      case FamiliarState.neutral:
-        return Theme.of(context).colorScheme.primary;
-    }
-  }
+class _FamiliarPickerSheet extends StatelessWidget {
+  const _FamiliarPickerSheet({required this.initial});
+  final FamiliarState initial;
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<_SentenceAction>(
-      tooltip: '句子操作菜单',
-      onSelected: onSelected,
-      itemBuilder: (context) => const [
-        PopupMenuItem(
-          value: _SentenceAction.markFamiliar,
-          child: Text('标熟句子'),
-        ),
-        PopupMenuItem(
-          value: _SentenceAction.markUnfamiliar,
-          child: Text('标为不熟'),
-        ),
-        PopupMenuItem(
-          value: _SentenceAction.markNeutral,
-          child: Text('恢复一般'),
-        ),
-        PopupMenuDivider(),
-        PopupMenuItem(
-          value: _SentenceAction.delete,
-          child: Text('删除句子'),
-        ),
-      ],
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: _stateColor(context)),
-        ),
-        child: Icon(Icons.more_vert, color: _stateColor(context)),
-      ),
-    );
-  }
-}
-
-class _SelectionBanner extends StatelessWidget {
-  const _SelectionBanner({required this.onCancel, required this.onDone});
-  final VoidCallback onCancel;
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Material(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        elevation: 4,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.edit, size: 18),
-              const SizedBox(width: 8),
-              const Text('选择模式'),
-              const Spacer(),
-              TextButton(onPressed: onCancel, child: const Text('取消')),
-              const SizedBox(width: 8),
-              FilledButton(onPressed: onDone, child: const Text('完成')),
-            ],
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child:
+                Text('选择熟练度', style: Theme.of(context).textTheme.titleMedium),
           ),
-        ),
+          for (final state in FamiliarState.values)
+            RadioListTile<FamiliarState>(
+              value: state,
+              groupValue: initial,
+              onChanged: (value) => Navigator.pop(context, value),
+              title: Text(state.name),
+            ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
@@ -864,6 +1354,12 @@ class _ColorDot extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ImportPayload {
+  _ImportPayload(this.content, this.defaultFamiliar);
+  final String content;
+  final FamiliarState defaultFamiliar;
 }
 
 class ReadingStylePanel extends StatefulWidget {

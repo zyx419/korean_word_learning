@@ -32,18 +32,23 @@ const ReadingPrefsSchema = CollectionSchema(
       name: r'paragraphSpacing',
       type: IsarType.long,
     ),
-    r'theme': PropertySchema(
+    r'scrollOffset': PropertySchema(
       id: 3,
+      name: r'scrollOffset',
+      type: IsarType.double,
+    ),
+    r'theme': PropertySchema(
+      id: 4,
       name: r'theme',
       type: IsarType.string,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -95,9 +100,10 @@ void _readingPrefsSerialize(
   writer.writeLong(offsets[0], object.fontSize);
   writer.writeDouble(offsets[1], object.lineHeight);
   writer.writeLong(offsets[2], object.paragraphSpacing);
-  writer.writeString(offsets[3], object.theme);
-  writer.writeDateTime(offsets[4], object.updatedAtLocal);
-  writer.writeDateTime(offsets[5], object.updatedAtRemote);
+  writer.writeDouble(offsets[3], object.scrollOffset);
+  writer.writeString(offsets[4], object.theme);
+  writer.writeDateTime(offsets[5], object.updatedAtLocal);
+  writer.writeDateTime(offsets[6], object.updatedAtRemote);
 }
 
 ReadingPrefs _readingPrefsDeserialize(
@@ -111,9 +117,10 @@ ReadingPrefs _readingPrefsDeserialize(
   object.id = id;
   object.lineHeight = reader.readDouble(offsets[1]);
   object.paragraphSpacing = reader.readLong(offsets[2]);
-  object.theme = reader.readString(offsets[3]);
-  object.updatedAtLocal = reader.readDateTime(offsets[4]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[5]);
+  object.scrollOffset = reader.readDouble(offsets[3]);
+  object.theme = reader.readString(offsets[4]);
+  object.updatedAtLocal = reader.readDateTime(offsets[5]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[6]);
   return object;
 }
 
@@ -131,10 +138,12 @@ P _readingPrefsDeserializeProp<P>(
     case 2:
       return (reader.readLong(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readDouble(offset)) as P;
     case 4:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 5:
+      return (reader.readDateTime(offset)) as P;
+    case 6:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -567,6 +576,72 @@ extension ReadingPrefsQueryFilter
     });
   }
 
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterFilterCondition>
+      scrollOffsetEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'scrollOffset',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterFilterCondition>
+      scrollOffsetGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'scrollOffset',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterFilterCondition>
+      scrollOffsetLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'scrollOffset',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterFilterCondition>
+      scrollOffsetBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'scrollOffset',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
   QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterFilterCondition> themeEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -879,6 +954,19 @@ extension ReadingPrefsQuerySortBy
     });
   }
 
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy> sortByScrollOffset() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scrollOffset', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy>
+      sortByScrollOffsetDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scrollOffset', Sort.desc);
+    });
+  }
+
   QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy> sortByTheme() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'theme', Sort.asc);
@@ -973,6 +1061,19 @@ extension ReadingPrefsQuerySortThenBy
     });
   }
 
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy> thenByScrollOffset() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scrollOffset', Sort.asc);
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy>
+      thenByScrollOffsetDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'scrollOffset', Sort.desc);
+    });
+  }
+
   QueryBuilder<ReadingPrefs, ReadingPrefs, QAfterSortBy> thenByTheme() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'theme', Sort.asc);
@@ -1035,6 +1136,12 @@ extension ReadingPrefsQueryWhereDistinct
     });
   }
 
+  QueryBuilder<ReadingPrefs, ReadingPrefs, QDistinct> distinctByScrollOffset() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'scrollOffset');
+    });
+  }
+
   QueryBuilder<ReadingPrefs, ReadingPrefs, QDistinct> distinctByTheme(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1080,6 +1187,12 @@ extension ReadingPrefsQueryProperty
   QueryBuilder<ReadingPrefs, int, QQueryOperations> paragraphSpacingProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'paragraphSpacing');
+    });
+  }
+
+  QueryBuilder<ReadingPrefs, double, QQueryOperations> scrollOffsetProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'scrollOffset');
     });
   }
 

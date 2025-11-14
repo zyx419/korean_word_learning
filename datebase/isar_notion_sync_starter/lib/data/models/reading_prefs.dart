@@ -9,6 +9,7 @@ class ReadingPrefs {
   int fontSize = 16;
   double lineHeight = 1.6;
   int paragraphSpacing = 8;
+  double scrollOffset = 0;
 
   @Index()
   DateTime updatedAtLocal = DateTime.now();

@@ -42,7 +42,9 @@ class NotionRetrySyncHandler implements SyncHandler {
     if (sentence == null) {
       return const SyncResult.err('NOT_FOUND', '句子不存在');
     }
-    final res = await _push.deleteSentence(sentence);
+    final res = job.op == 'delete'
+        ? await _push.deleteSentence(sentence)
+        : await _push.upsertSentence(sentence);
     return _mapResult(res);
   }
 

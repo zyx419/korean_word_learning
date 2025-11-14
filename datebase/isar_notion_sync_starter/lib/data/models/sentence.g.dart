@@ -32,29 +32,34 @@ const SentenceSchema = CollectionSchema(
       name: r'externalKey',
       type: IsarType.string,
     ),
-    r'familiarState': PropertySchema(
+    r'extra': PropertySchema(
       id: 3,
+      name: r'extra',
+      type: IsarType.string,
+    ),
+    r'familiarState': PropertySchema(
+      id: 4,
       name: r'familiarState',
       type: IsarType.string,
       enumMap: _SentencefamiliarStateEnumValueMap,
     ),
     r'notionPageId': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'notionPageId',
       type: IsarType.string,
     ),
     r'text': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'text',
       type: IsarType.string,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -138,6 +143,12 @@ int _sentenceEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  {
+    final value = object.extra;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.familiarState.name.length * 3;
   {
     final value = object.notionPageId;
@@ -158,11 +169,12 @@ void _sentenceSerialize(
   writer.writeDateTime(offsets[0], object.createdAt);
   writer.writeDateTime(offsets[1], object.deletedAt);
   writer.writeString(offsets[2], object.externalKey);
-  writer.writeString(offsets[3], object.familiarState.name);
-  writer.writeString(offsets[4], object.notionPageId);
-  writer.writeString(offsets[5], object.text);
-  writer.writeDateTime(offsets[6], object.updatedAtLocal);
-  writer.writeDateTime(offsets[7], object.updatedAtRemote);
+  writer.writeString(offsets[3], object.extra);
+  writer.writeString(offsets[4], object.familiarState.name);
+  writer.writeString(offsets[5], object.notionPageId);
+  writer.writeString(offsets[6], object.text);
+  writer.writeDateTime(offsets[7], object.updatedAtLocal);
+  writer.writeDateTime(offsets[8], object.updatedAtRemote);
 }
 
 Sentence _sentenceDeserialize(
@@ -175,14 +187,15 @@ Sentence _sentenceDeserialize(
   object.createdAt = reader.readDateTime(offsets[0]);
   object.deletedAt = reader.readDateTimeOrNull(offsets[1]);
   object.externalKey = reader.readStringOrNull(offsets[2]);
+  object.extra = reader.readStringOrNull(offsets[3]);
   object.familiarState =
-      _SentencefamiliarStateValueEnumMap[reader.readStringOrNull(offsets[3])] ??
+      _SentencefamiliarStateValueEnumMap[reader.readStringOrNull(offsets[4])] ??
           FamiliarState.familiar;
   object.id = id;
-  object.notionPageId = reader.readStringOrNull(offsets[4]);
-  object.text = reader.readString(offsets[5]);
-  object.updatedAtLocal = reader.readDateTime(offsets[6]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[7]);
+  object.notionPageId = reader.readStringOrNull(offsets[5]);
+  object.text = reader.readString(offsets[6]);
+  object.updatedAtLocal = reader.readDateTime(offsets[7]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[8]);
   return object;
 }
 
@@ -200,16 +213,18 @@ P _sentenceDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
+      return (reader.readStringOrNull(offset)) as P;
+    case 4:
       return (_SentencefamiliarStateValueEnumMap[
               reader.readStringOrNull(offset)] ??
           FamiliarState.familiar) as P;
-    case 4:
-      return (reader.readStringOrNull(offset)) as P;
     case 5:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 6:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
+      return (reader.readDateTime(offset)) as P;
+    case 8:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -968,6 +983,152 @@ extension SentenceQueryFilter
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'extra',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'extra',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'extra',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'extra',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'extra',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'extra',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> extraIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'extra',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterFilterCondition> familiarStateEqualTo(
     FamiliarState value, {
     bool caseSensitive = true,
@@ -1608,6 +1769,18 @@ extension SentenceQuerySortBy on QueryBuilder<Sentence, Sentence, QSortBy> {
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByExtra() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'extra', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByExtraDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'extra', Sort.desc);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByFamiliarState() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'familiarState', Sort.asc);
@@ -1707,6 +1880,18 @@ extension SentenceQuerySortThenBy
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByExtra() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'extra', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByExtraDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'extra', Sort.desc);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByFamiliarState() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'familiarState', Sort.asc);
@@ -1801,6 +1986,13 @@ extension SentenceQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QDistinct> distinctByExtra(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'extra', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QDistinct> distinctByFamiliarState(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1859,6 +2051,12 @@ extension SentenceQueryProperty
   QueryBuilder<Sentence, String?, QQueryOperations> externalKeyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'externalKey');
+    });
+  }
+
+  QueryBuilder<Sentence, String?, QQueryOperations> extraProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'extra');
     });
   }
 

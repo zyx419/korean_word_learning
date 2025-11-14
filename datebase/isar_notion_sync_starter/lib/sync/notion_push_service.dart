@@ -134,12 +134,13 @@ class NotionPushService {
       final resp =
           await ctx.api.updatePage(sentence.notionPageId!, {'archived': true});
       final remoteEditedAt = DateTime.tryParse(resp['last_edited_time'] ?? '');
-      await _isar.writeTxn(() async {
-        final local = await _isar.sentences.get(sentence.id);
-        if (local == null) return;
+      final local = await _isar.sentences.get(sentence.id);
+      if (local != null) {
         local.updatedAtRemote = remoteEditedAt;
-        await _isar.sentences.put(local);
-      });
+        await _isar.writeTxn(() async {
+          await _isar.sentences.put(local);
+        });
+      }
       _logger.info('Archived sentence ${sentence.id} in Notion',
           data: {'remoteId': sentence.notionPageId});
       return const NotionPushResult.success();
@@ -161,6 +162,56 @@ class NotionPushService {
         errorMessage: '$e',
       );
       return NotionPushResult.error('删除句子时同步 Notion 失败：$e');
+    }
+  }
+
+  Future<NotionPushResult> upsertSentence(Sentence sentence) async {
+    final ctx = await _loadContext();
+    if (ctx == null) {
+      return const NotionPushResult.error('未配置 Notion token，无法同步句子。');
+    }
+    final dbId = ctx.sentencesDbId;
+    if (dbId == null || dbId.isEmpty) {
+      return const NotionPushResult.error('未绑定句子数据库，无法同步。');
+    }
+    sentence.ensureExternalKey();
+    final isCreate = sentence.notionPageId == null;
+    final payload = sentence.toNotion();
+    try {
+      final resp = isCreate
+          ? await ctx.api.createPage(dbId, payload)
+          : await ctx.api.updatePage(sentence.notionPageId!, payload);
+      final remoteId = resp['id'] as String? ?? sentence.notionPageId;
+      final remoteEditedAt = DateTime.tryParse(resp['last_edited_time'] ?? '');
+      final local = await _isar.sentences.get(sentence.id);
+      if (local != null) {
+        if (remoteId != null) local.notionPageId = remoteId;
+        local.updatedAtRemote = remoteEditedAt;
+        await _isar.writeTxn(() async {
+          await _isar.sentences.put(local);
+        });
+      }
+      _logger.info('Pushed sentence ${sentence.id} to Notion',
+          data: {'op': isCreate ? 'create' : 'update', 'remoteId': remoteId});
+      return const NotionPushResult.success();
+    } catch (e, st) {
+      _logger.error('Failed to push sentence ${sentence.id}',
+          error: e, stackTrace: st);
+      await _enqueueFailure(
+        entityType: 'sentence',
+        op: isCreate ? 'create' : 'update',
+        localKey: '${sentence.id}',
+        remoteId: sentence.notionPageId,
+        payload: {
+          'externalKey': sentence.externalKey,
+          'text': sentence.text,
+        },
+        error: e,
+        status: 'failed',
+        errorCode: 'PUSH',
+        errorMessage: '$e',
+      );
+      return NotionPushResult.error('同步句子到 Notion 失败：$e');
     }
   }
 
