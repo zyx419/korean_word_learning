@@ -4,24 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
 import 'package:isar_notion_sync_starter/main.dart';
-import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 
 class SyncQueuePage extends StatefulWidget {
-  const SyncQueuePage({super.key, this.itemsStream});
-
-  /// Optional injected stream for tests/demos so we don't rely on Isar runtime.
-  final Stream<List<SyncQueueItem>>? itemsStream;
+  const SyncQueuePage({super.key});
 
   @override
   State<SyncQueuePage> createState() => _SyncQueuePageState();
 }
 
 class _SyncQueuePageState extends State<SyncQueuePage> {
-  late final SyncSchedulerImpl _scheduler;
-  Stream<List<SyncQueueItem>>? _stream;
-  bool _inited = false;
-  static const Duration _syncTimeout = Duration(seconds: 10);
+  late final Stream<List<SyncQueueItem>> _stream;
+
+  SyncSchedulerImpl? get _scheduler => globalSyncScheduler;
 
   // UI filters
   String _status = 'all';
@@ -34,44 +29,19 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
   @override
   void initState() {
     super.initState();
-    if (widget.itemsStream != null) {
-      _stream = widget.itemsStream;
-      _inited = true;
-    } else {
-      _init();
-    }
-  }
-
-  Future<void> _init() async {
-    await isarService.init();
-    _scheduler = SyncSchedulerImpl(isarService.isar);
-    final retryHandler = NotionRetrySyncHandler(isarService.isar);
-    _scheduler
-      ..registerHandler('highlight', retryHandler)
-      ..registerHandler('sentence', retryHandler);
-    _buildStream();
-    setState(() => _inited = true);
-  }
-
-  void _buildStream() {
-    if (widget.itemsStream != null) {
-      _stream = widget.itemsStream;
-      return;
-    }
-
     final isar = isarService.isar;
     _stream = isar.syncQueueItems.where().anyId().watch(fireImmediately: true);
+    Future.microtask(() async {
+      await isarService.init();
+      await ensureGlobalSchedulerStarted();
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _searchCtl.dispose();
     super.dispose();
-  }
-
-  Future<void> _runOnce() async {
-    await _scheduler.runOnce();
-    if (mounted) _snack('已触发一次同步');
   }
 
   Future<void> _retryItem(SyncQueueItem item) async {
@@ -81,7 +51,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
       item.updatedAt = DateTime.now();
       await isar.syncQueueItems.put(item);
     });
-    await _triggerSync();
+    await _runOnce();
   }
 
   Future<void> _cancelItem(SyncQueueItem item) async {
@@ -111,7 +81,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         await isar.syncQueueItems.put(it);
       }
     });
-    await _triggerSync();
+    await _runOnce();
   }
 
   Future<void> _cancelPending() async {
@@ -142,6 +112,16 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  Future<void> _runOnce() async {
+    final scheduler = _scheduler;
+    if (scheduler == null) {
+      if (mounted) _snack('调度器未启动');
+      return;
+    }
+    await scheduler.runOnce();
+    if (mounted) _snack('已触发一次同步');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -150,68 +130,64 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         actions: [
           IconButton(
             tooltip: '运行一次',
-            onPressed:
-                (_inited && widget.itemsStream == null) ? _runOnce : null,
+            onPressed: _scheduler != null ? _runOnce : null,
             icon: const Icon(Icons.play_circle_outline),
           ),
-          if (widget.itemsStream == null)
-            PopupMenuButton<String>(
-              tooltip: '批量操作',
-              onSelected: (v) async {
-                switch (v) {
-                  case 'retry_failed':
-                    await _retryFailed();
-                    _snack('已重试所有失败任务');
-                    break;
-                  case 'cancel_pending':
-                    await _cancelPending();
-                    _snack('已取消所有待处理任务');
-                    break;
-                  case 'clear_success':
-                    await _clearSuccess();
-                    _snack('已清理成功任务');
-                    break;
-                }
-              },
-              itemBuilder: (ctx) => const [
-                PopupMenuItem(value: 'retry_failed', child: Text('重试失败全部')),
-                PopupMenuItem(value: 'cancel_pending', child: Text('取消待处理全部')),
-                PopupMenuItem(value: 'clear_success', child: Text('清理成功记录')),
-              ],
-            ),
+          PopupMenuButton<String>(
+            tooltip: '批量操作',
+            onSelected: (v) async {
+              switch (v) {
+                case 'retry_failed':
+                  await _retryFailed();
+                  _snack('已重试所有失败任务');
+                  break;
+                case 'cancel_pending':
+                  await _cancelPending();
+                  _snack('已取消所有待处理任务');
+                  break;
+                case 'clear_success':
+                  await _clearSuccess();
+                  _snack('已清理成功任务');
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: 'retry_failed', child: Text('重试失败全部')),
+              PopupMenuItem(value: 'cancel_pending', child: Text('取消待处理全部')),
+              PopupMenuItem(value: 'clear_success', child: Text('清理成功记录')),
+            ],
+          ),
         ],
       ),
-      body: !_inited
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  _buildFilters(context),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: StreamBuilder<List<SyncQueueItem>>(
-                      stream: _stream,
-                      builder: (context, snap) {
-                        final items =
-                            _applyFilters(snap.data ?? const <SyncQueueItem>[]);
-                        return Column(
-                          children: [
-                            _SummaryBar(items: items),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: items.isEmpty
-                                  ? const _EmptyState()
-                                  : _buildList(items),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            _buildFilters(context),
+            const SizedBox(height: 8),
+            Expanded(
+              child: StreamBuilder<List<SyncQueueItem>>(
+                stream: _stream,
+                builder: (context, snap) {
+                  final items =
+                      _applyFilters(snap.data ?? const <SyncQueueItem>[]);
+                  return Column(
+                    children: [
+                      _SummaryBar(items: items),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: items.isEmpty
+                            ? const _EmptyState()
+                            : _buildList(items),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -350,42 +326,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         );
       },
     );
-    if (widget.itemsStream != null) {
-      return list;
-    }
-    return RefreshIndicator(onRefresh: () async => _runOnce(), child: list);
-  }
-
-  Future<void> _triggerSync() async {
-    if (widget.itemsStream != null) return;
-    await _resetTimedOutJobs();
-    try {
-      await _scheduler.runOnce().timeout(_syncTimeout);
-    } on TimeoutException {
-      await _resetTimedOutJobs(force: true);
-      if (mounted) {
-        _snack('同步超时，已重置任务状态');
-      }
-    }
-  }
-
-  Future<void> _resetTimedOutJobs({bool force = false}) async {
-    final isar = isarService.isar;
-    final cutoff = DateTime.now().subtract(_syncTimeout);
-    final stuck = await isar.syncQueueItems
-        .filter()
-        .statusEqualTo('syncing')
-        .updatedAtLessThan(force ? DateTime.now() : cutoff)
-        .findAll();
-    if (stuck.isEmpty) return;
-    await isar.writeTxn(() async {
-      final now = DateTime.now();
-      for (final it in stuck) {
-        it.status = 'pending';
-        it.updatedAt = now;
-        await isar.syncQueueItems.put(it);
-      }
-    });
+    return RefreshIndicator(onRefresh: _runOnce, child: list);
   }
 }
 

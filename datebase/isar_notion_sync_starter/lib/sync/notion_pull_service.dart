@@ -74,7 +74,10 @@ class NotionPullService {
           continue;
         }
         remote.updatedAtLocal = DateTime.now();
-        final existing = await _isar.sentences.getByNotionPageId(remoteId);
+        final existing = await _isar.sentences
+            .filter()
+            .notionPageIdEqualTo(remoteId, caseSensitive: false)
+            .findFirst();
         if (existing == null) {
           await _isar.sentences.put(remote);
           _logger.info('Inserted sentence $remoteId text="${remote.text}"');

@@ -21,10 +21,14 @@ class NotionPushService {
   Future<NotionPushResult> upsertHighlight(Highlight highlight) async {
     final ctx = await _loadContext();
     if (ctx == null) {
+      _logger.warn('1117-debug missing Notion auth when upserting highlight',
+          data: {'id': highlight.id});
       return const NotionPushResult.error('未配置 Notion token，无法同步高亮。');
     }
     final dbId = ctx.highlightsDbId;
     if (dbId == null || dbId.isEmpty) {
+      _logger
+          .warn('1117-debug missing highlight db binding', data: {'id': highlight.id});
       return const NotionPushResult.error('未绑定高亮数据库，无法同步。');
     }
     final isCreate = highlight.notionPageId == null;
@@ -128,6 +132,7 @@ class NotionPushService {
     }
     final ctx = await _loadContext();
     if (ctx == null) {
+      await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return const NotionPushResult.error('未配置 Notion token，无法同步句子删除。');
     }
     try {
@@ -140,6 +145,7 @@ class NotionPushService {
         await _isar.writeTxn(() async {
           await _isar.sentences.put(local);
         });
+        await _markSentenceStatus(local.id, SyncStatus.success);
       }
       _logger.info('Archived sentence ${sentence.id} in Notion',
           data: {'remoteId': sentence.notionPageId});
@@ -150,7 +156,7 @@ class NotionPushService {
       await _enqueueFailure(
         entityType: 'sentence',
         op: 'delete',
-        localKey: '${sentence.id}',
+        localKey: sentence.externalKey ?? '${sentence.id}',
         remoteId: sentence.notionPageId,
         payload: {
           'externalKey': sentence.externalKey,
@@ -161,6 +167,7 @@ class NotionPushService {
         errorCode: 'PUSH',
         errorMessage: '$e',
       );
+      await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return NotionPushResult.error('删除句子时同步 Notion 失败：$e');
     }
   }
@@ -168,10 +175,16 @@ class NotionPushService {
   Future<NotionPushResult> upsertSentence(Sentence sentence) async {
     final ctx = await _loadContext();
     if (ctx == null) {
+      _logger.warn('1117-debug missing Notion auth when upserting sentence',
+          data: {'id': sentence.id});
+      await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return const NotionPushResult.error('未配置 Notion token，无法同步句子。');
     }
     final dbId = ctx.sentencesDbId;
     if (dbId == null || dbId.isEmpty) {
+      _logger.warn('1117-debug missing sentence db binding',
+          data: {'id': sentence.id});
+      await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return const NotionPushResult.error('未绑定句子数据库，无法同步。');
     }
     sentence.ensureExternalKey();
@@ -190,6 +203,7 @@ class NotionPushService {
         await _isar.writeTxn(() async {
           await _isar.sentences.put(local);
         });
+        await _markSentenceStatus(local.id, SyncStatus.success);
       }
       _logger.info('Pushed sentence ${sentence.id} to Notion',
           data: {'op': isCreate ? 'create' : 'update', 'remoteId': remoteId});
@@ -200,7 +214,7 @@ class NotionPushService {
       await _enqueueFailure(
         entityType: 'sentence',
         op: isCreate ? 'create' : 'update',
-        localKey: '${sentence.id}',
+        localKey: sentence.externalKey ?? '${sentence.id}',
         remoteId: sentence.notionPageId,
         payload: {
           'externalKey': sentence.externalKey,
@@ -211,7 +225,22 @@ class NotionPushService {
         errorCode: 'PUSH',
         errorMessage: '$e',
       );
+      await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return NotionPushResult.error('同步句子到 Notion 失败：$e');
+    }
+  }
+
+  Future<void> _markSentenceStatus(int id, SyncStatus status) async {
+    try {
+      await _isar.writeTxn(() async {
+        final local = await _isar.sentences.get(id);
+        if (local == null) return;
+        local.syncStatus = status;
+        local.updatedAtLocal = DateTime.now();
+        await _isar.sentences.put(local);
+      });
+    } catch (_) {
+      // swallow to avoid breaking caller
     }
   }
 

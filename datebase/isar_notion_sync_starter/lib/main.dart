@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar_notion_sync_starter/data/local/isar_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
+import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
+import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 import 'package:isar_notion_sync_starter/ui/pages/welcome_page.dart';
 import 'package:isar_notion_sync_starter/ui/pages/learning_page.dart';
 import 'package:isar_notion_sync_starter/ui/pages/settings_page.dart';
@@ -9,6 +11,7 @@ import 'package:isar_notion_sync_starter/ui/pages/sync_queue_page.dart';
 
 /// App-wide singleton-like service for accessing the Isar database.
 final isarService = IsarService();
+SyncSchedulerImpl? globalSyncScheduler;
 
 /// App entry point.
 ///
@@ -21,6 +24,7 @@ void main() async {
   Future.microtask(() async {
     try {
       await isarService.init();
+      await ensureGlobalSchedulerStarted();
       if (kDebugMode) debugPrint('Isar initialized');
       await NotionPullService(isarService.isar).pullAll();
     } catch (e, st) {
@@ -47,4 +51,15 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
     );
   }
+}
+
+Future<void> ensureGlobalSchedulerStarted() async {
+  if (globalSyncScheduler != null) return;
+  final scheduler = SyncSchedulerImpl(isarService.isar);
+  final retryHandler = NotionRetrySyncHandler(isarService.isar);
+  scheduler
+    ..registerHandler('highlight', retryHandler)
+    ..registerHandler('sentence', retryHandler);
+  scheduler.runContinuous();
+  globalSyncScheduler = scheduler;
 }

@@ -4,12 +4,13 @@ import 'package:isar_notion_sync_starter/data/adapters/notion_mappers.dart';
 part 'sentence.g.dart';
 
 enum FamiliarState { familiar, unfamiliar, neutral }
+enum SyncStatus { unknown, success, failed }
 
 @collection
 class Sentence {
   Id id = Isar.autoIncrement;
 
-  @Index(unique: true, replace: true)
+  @Index(caseSensitive: false)
   String? notionPageId;
 
   @Index(unique: true, replace: true, caseSensitive: false)
@@ -21,6 +22,9 @@ class Sentence {
   @Enumerated(EnumType.name)
   FamiliarState familiarState = FamiliarState.neutral;
 
+  @Enumerated(EnumType.name)
+  SyncStatus syncStatus = SyncStatus.unknown;
+
   @Index()
   DateTime updatedAtLocal = DateTime.now();
 
@@ -28,6 +32,8 @@ class Sentence {
   DateTime createdAt = DateTime.now();
   DateTime? deletedAt;
   String? extra;
+
+  static int _extKeyNonce = 0;
 
   Map<String, dynamic> toNotion() => {
         'properties': {
@@ -90,10 +96,14 @@ class Sentence {
       s.createdAt = createdAt;
     }
     s.extra = readTextProperty(properties?['Extra'] as Map<String, dynamic>?);
+    s.syncStatus = SyncStatus.success;
     return s;
   }
 
   void ensureExternalKey() {
-    externalKey ??= 'sent-${DateTime.now().microsecondsSinceEpoch}';
+    if (externalKey != null && externalKey!.isNotEmpty) return;
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    _extKeyNonce = (_extKeyNonce + 1) % 1000000;
+    externalKey = 'sent-$ts-$_extKeyNonce';
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import '../data/models/sync_queue_item.dart';
 import 'sync_scheduler.dart';
 import 'package:isar/isar.dart';
+import '../utils/app_logger.dart';
 
 class SyncSchedulerImpl implements SyncScheduler {
   SyncSchedulerImpl(this._isar);
@@ -10,6 +11,7 @@ class SyncSchedulerImpl implements SyncScheduler {
   final _handlers = <String, SyncHandler>{};
   bool _online = true;
   bool _running = false;
+  final AppLogger _logger = AppLogger.instance;
 
   @override
   void registerHandler(String entityType, SyncHandler handler) {
@@ -60,10 +62,15 @@ class SyncSchedulerImpl implements SyncScheduler {
         .thenByUpdatedAt()
         .limit(10)
         .findAll();
+    _logger.debug('1117-debug scheduler runOnce pending=${items.length}');
 
     for (final it in items) {
       final handler = _handlers[it.entityType];
-      if (handler == null) continue;
+      if (handler == null) {
+        _logger.warn('1117-debug no handler registered',
+            data: {'entityType': it.entityType, 'queueId': it.queueId});
+        continue;
+      }
       await _isar.writeTxn(() async {
         it.status = 'syncing';
         it.updatedAt = DateTime.now();
@@ -111,7 +118,7 @@ class SyncSchedulerImpl implements SyncScheduler {
     _running = true;
     while (_running) {
       await runOnce();
-      await Future.delayed(const Duration(seconds: 3));
+      await Future.delayed(const Duration(milliseconds: 300));
     }
   }
 }

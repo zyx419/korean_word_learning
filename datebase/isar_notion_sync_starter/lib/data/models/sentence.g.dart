@@ -48,18 +48,24 @@ const SentenceSchema = CollectionSchema(
       name: r'notionPageId',
       type: IsarType.string,
     ),
-    r'text': PropertySchema(
+    r'syncStatus': PropertySchema(
       id: 6,
+      name: r'syncStatus',
+      type: IsarType.string,
+      enumMap: _SentencesyncStatusEnumValueMap,
+    ),
+    r'text': PropertySchema(
+      id: 7,
       name: r'text',
       type: IsarType.string,
     ),
     r'updatedAtLocal': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'updatedAtLocal',
       type: IsarType.dateTime,
     ),
     r'updatedAtRemote': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'updatedAtRemote',
       type: IsarType.dateTime,
     )
@@ -73,13 +79,13 @@ const SentenceSchema = CollectionSchema(
     r'notionPageId': IndexSchema(
       id: -8832551690891678375,
       name: r'notionPageId',
-      unique: true,
-      replace: true,
+      unique: false,
+      replace: false,
       properties: [
         IndexPropertySchema(
           name: r'notionPageId',
           type: IndexType.hash,
-          caseSensitive: true,
+          caseSensitive: false,
         )
       ],
     ),
@@ -156,6 +162,7 @@ int _sentenceEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  bytesCount += 3 + object.syncStatus.name.length * 3;
   bytesCount += 3 + object.text.length * 3;
   return bytesCount;
 }
@@ -172,9 +179,10 @@ void _sentenceSerialize(
   writer.writeString(offsets[3], object.extra);
   writer.writeString(offsets[4], object.familiarState.name);
   writer.writeString(offsets[5], object.notionPageId);
-  writer.writeString(offsets[6], object.text);
-  writer.writeDateTime(offsets[7], object.updatedAtLocal);
-  writer.writeDateTime(offsets[8], object.updatedAtRemote);
+  writer.writeString(offsets[6], object.syncStatus.name);
+  writer.writeString(offsets[7], object.text);
+  writer.writeDateTime(offsets[8], object.updatedAtLocal);
+  writer.writeDateTime(offsets[9], object.updatedAtRemote);
 }
 
 Sentence _sentenceDeserialize(
@@ -193,9 +201,12 @@ Sentence _sentenceDeserialize(
           FamiliarState.familiar;
   object.id = id;
   object.notionPageId = reader.readStringOrNull(offsets[5]);
-  object.text = reader.readString(offsets[6]);
-  object.updatedAtLocal = reader.readDateTime(offsets[7]);
-  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[8]);
+  object.syncStatus =
+      _SentencesyncStatusValueEnumMap[reader.readStringOrNull(offsets[6])] ??
+          SyncStatus.unknown;
+  object.text = reader.readString(offsets[7]);
+  object.updatedAtLocal = reader.readDateTime(offsets[8]);
+  object.updatedAtRemote = reader.readDateTimeOrNull(offsets[9]);
   return object;
 }
 
@@ -221,10 +232,14 @@ P _sentenceDeserializeProp<P>(
     case 5:
       return (reader.readStringOrNull(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (_SentencesyncStatusValueEnumMap[
+              reader.readStringOrNull(offset)] ??
+          SyncStatus.unknown) as P;
     case 7:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 8:
+      return (reader.readDateTime(offset)) as P;
+    case 9:
       return (reader.readDateTimeOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -241,6 +256,16 @@ const _SentencefamiliarStateValueEnumMap = {
   r'unfamiliar': FamiliarState.unfamiliar,
   r'neutral': FamiliarState.neutral,
 };
+const _SentencesyncStatusEnumValueMap = {
+  r'unknown': r'unknown',
+  r'success': r'success',
+  r'failed': r'failed',
+};
+const _SentencesyncStatusValueEnumMap = {
+  r'unknown': SyncStatus.unknown,
+  r'success': SyncStatus.success,
+  r'failed': SyncStatus.failed,
+};
 
 Id _sentenceGetId(Sentence object) {
   return object.id;
@@ -255,60 +280,6 @@ void _sentenceAttach(IsarCollection<dynamic> col, Id id, Sentence object) {
 }
 
 extension SentenceByIndex on IsarCollection<Sentence> {
-  Future<Sentence?> getByNotionPageId(String? notionPageId) {
-    return getByIndex(r'notionPageId', [notionPageId]);
-  }
-
-  Sentence? getByNotionPageIdSync(String? notionPageId) {
-    return getByIndexSync(r'notionPageId', [notionPageId]);
-  }
-
-  Future<bool> deleteByNotionPageId(String? notionPageId) {
-    return deleteByIndex(r'notionPageId', [notionPageId]);
-  }
-
-  bool deleteByNotionPageIdSync(String? notionPageId) {
-    return deleteByIndexSync(r'notionPageId', [notionPageId]);
-  }
-
-  Future<List<Sentence?>> getAllByNotionPageId(
-      List<String?> notionPageIdValues) {
-    final values = notionPageIdValues.map((e) => [e]).toList();
-    return getAllByIndex(r'notionPageId', values);
-  }
-
-  List<Sentence?> getAllByNotionPageIdSync(List<String?> notionPageIdValues) {
-    final values = notionPageIdValues.map((e) => [e]).toList();
-    return getAllByIndexSync(r'notionPageId', values);
-  }
-
-  Future<int> deleteAllByNotionPageId(List<String?> notionPageIdValues) {
-    final values = notionPageIdValues.map((e) => [e]).toList();
-    return deleteAllByIndex(r'notionPageId', values);
-  }
-
-  int deleteAllByNotionPageIdSync(List<String?> notionPageIdValues) {
-    final values = notionPageIdValues.map((e) => [e]).toList();
-    return deleteAllByIndexSync(r'notionPageId', values);
-  }
-
-  Future<Id> putByNotionPageId(Sentence object) {
-    return putByIndex(r'notionPageId', object);
-  }
-
-  Id putByNotionPageIdSync(Sentence object, {bool saveLinks = true}) {
-    return putByIndexSync(r'notionPageId', object, saveLinks: saveLinks);
-  }
-
-  Future<List<Id>> putAllByNotionPageId(List<Sentence> objects) {
-    return putAllByIndex(r'notionPageId', objects);
-  }
-
-  List<Id> putAllByNotionPageIdSync(List<Sentence> objects,
-      {bool saveLinks = true}) {
-    return putAllByIndexSync(r'notionPageId', objects, saveLinks: saveLinks);
-  }
-
   Future<Sentence?> getByExternalKey(String? externalKey) {
     return getByIndex(r'externalKey', [externalKey]);
   }
@@ -1466,6 +1437,137 @@ extension SentenceQueryFilter
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusEqualTo(
+    SyncStatus value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusGreaterThan(
+    SyncStatus value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusLessThan(
+    SyncStatus value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusBetween(
+    SyncStatus lower,
+    SyncStatus upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'syncStatus',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'syncStatus',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'syncStatus',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition> syncStatusIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'syncStatus',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterFilterCondition>
+      syncStatusIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'syncStatus',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterFilterCondition> textEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -1805,6 +1907,18 @@ extension SentenceQuerySortBy on QueryBuilder<Sentence, Sentence, QSortBy> {
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortBySyncStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> sortBySyncStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncStatus', Sort.desc);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterSortBy> sortByText() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'text', Sort.asc);
@@ -1928,6 +2042,18 @@ extension SentenceQuerySortThenBy
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenBySyncStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Sentence, Sentence, QAfterSortBy> thenBySyncStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncStatus', Sort.desc);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QAfterSortBy> thenByText() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'text', Sort.asc);
@@ -2008,6 +2134,13 @@ extension SentenceQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Sentence, Sentence, QDistinct> distinctBySyncStatus(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'syncStatus', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Sentence, Sentence, QDistinct> distinctByText(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -2070,6 +2203,12 @@ extension SentenceQueryProperty
   QueryBuilder<Sentence, String?, QQueryOperations> notionPageIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'notionPageId');
+    });
+  }
+
+  QueryBuilder<Sentence, SyncStatus, QQueryOperations> syncStatusProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'syncStatus');
     });
   }
 

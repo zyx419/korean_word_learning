@@ -9,7 +9,6 @@ import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/main.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_push_service.dart';
-import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 
 /// 单词学习页：支持阅读、句级操作、文本高亮与样式自定义。
@@ -44,6 +43,7 @@ class _LearningPageState extends State<LearningPage> {
   late final ScrollController _scrollController;
   bool _scrollRestored = false;
   double _lastScrollOffset = 0;
+  static const Duration _notionThrottleDelay = Duration(milliseconds: 400);
 
   @override
   void initState() {
@@ -57,11 +57,8 @@ class _LearningPageState extends State<LearningPage> {
     await isarService.init();
     _isar = isarService.isar;
     final isar = _isar!;
-    final scheduler = SyncSchedulerImpl(isar);
-    final retryHandler = NotionRetrySyncHandler(isar);
-    scheduler
-      ..registerHandler('highlight', retryHandler)
-      ..registerHandler('sentence', retryHandler);
+    await ensureGlobalSchedulerStarted();
+    final scheduler = globalSyncScheduler;
     _scheduler = scheduler;
     _pushService = NotionPushService(isar, scheduler: scheduler);
     var prefs = await isar.readingPrefs.get(1);
@@ -810,7 +807,30 @@ class _LearningPageState extends State<LearningPage> {
     final push = _pushService;
     if (push != null) {
       for (final sentence in sentences) {
-        await push.upsertSentence(sentence);
+        sentence.ensureExternalKey();
+        final result = await push.upsertSentence(sentence);
+        if (!result.ok) {
+          if (sentence.id != Isar.autoIncrement) {
+            await _setSentenceStatus(sentence.id, SyncStatus.failed);
+          }
+          final scheduler = _scheduler;
+          if (scheduler != null) {
+            await scheduler.enqueue(
+              entityType: 'sentence',
+              op: 'create',
+              entityLocalKey: sentence.externalKey ?? '${sentence.id}',
+              payload: {
+                'externalKey': sentence.externalKey,
+                'text': sentence.text,
+              },
+              status: 'failed',
+              errorCode: result.skipped ? null : 'PUSH',
+              errorMessage: result.message,
+            );
+            unawaited(scheduler.runOnce());
+          }
+        }
+        await Future.delayed(_notionThrottleDelay);
       }
     }
     if (!mounted) return;
@@ -884,16 +904,52 @@ class _LearningPageState extends State<LearningPage> {
     });
     if (push != null) {
       for (final sentence in toUpsert) {
-        await push.upsertSentence(sentence);
+        sentence.ensureExternalKey();
+        final result = await push.upsertSentence(sentence);
+        if (!result.ok) {
+          if (sentence.id != Isar.autoIncrement) {
+            await _setSentenceStatus(sentence.id, SyncStatus.failed);
+          }
+          final scheduler = _scheduler;
+          if (scheduler != null) {
+            await scheduler.enqueue(
+              entityType: 'sentence',
+              op: 'create',
+              entityLocalKey: sentence.externalKey ?? '${sentence.id}',
+              payload: {
+                'externalKey': sentence.externalKey,
+                'text': sentence.text,
+              },
+              status: 'failed',
+              errorCode: 'PUSH',
+              errorMessage: result.message,
+            );
+            unawaited(scheduler.runOnce());
+          }
+        }
+        await Future.delayed(_notionThrottleDelay);
       }
     }
     for (final sentence in toDelete) {
       await _deleteSentence(sentence);
+      await Future.delayed(_notionThrottleDelay);
     }
     await _reloadSentences();
     setState(() {
       _selectedSentenceIds.clear();
       _bulkSelectMode = false;
+    });
+  }
+
+  Future<void> _setSentenceStatus(int id, SyncStatus status) async {
+    final isar = _isar;
+    if (isar == null) return;
+    await isar.writeTxn(() async {
+      final local = await isar.sentences.get(id);
+      if (local == null) return;
+      local.syncStatus = status;
+      local.updatedAtLocal = DateTime.now();
+      await isar.sentences.put(local);
     });
   }
 
