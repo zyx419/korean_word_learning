@@ -62,13 +62,10 @@ class SyncSchedulerImpl implements SyncScheduler {
         .thenByUpdatedAt()
         .limit(10)
         .findAll();
-    _logger.debug('1117-debug scheduler runOnce pending=${items.length}');
 
     for (final it in items) {
       final handler = _handlers[it.entityType];
       if (handler == null) {
-        _logger.warn('1117-debug no handler registered',
-            data: {'entityType': it.entityType, 'queueId': it.queueId});
         continue;
       }
       await _isar.writeTxn(() async {

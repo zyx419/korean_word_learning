@@ -21,14 +21,10 @@ class NotionPushService {
   Future<NotionPushResult> upsertHighlight(Highlight highlight) async {
     final ctx = await _loadContext();
     if (ctx == null) {
-      _logger.warn('1117-debug missing Notion auth when upserting highlight',
-          data: {'id': highlight.id});
       return const NotionPushResult.error('未配置 Notion token，无法同步高亮。');
     }
     final dbId = ctx.highlightsDbId;
     if (dbId == null || dbId.isEmpty) {
-      _logger
-          .warn('1117-debug missing highlight db binding', data: {'id': highlight.id});
       return const NotionPushResult.error('未绑定高亮数据库，无法同步。');
     }
     final isCreate = highlight.notionPageId == null;
@@ -175,15 +171,11 @@ class NotionPushService {
   Future<NotionPushResult> upsertSentence(Sentence sentence) async {
     final ctx = await _loadContext();
     if (ctx == null) {
-      _logger.warn('1117-debug missing Notion auth when upserting sentence',
-          data: {'id': sentence.id});
       await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return const NotionPushResult.error('未配置 Notion token，无法同步句子。');
     }
     final dbId = ctx.sentencesDbId;
     if (dbId == null || dbId.isEmpty) {
-      _logger.warn('1117-debug missing sentence db binding',
-          data: {'id': sentence.id});
       await _markSentenceStatus(sentence.id, SyncStatus.failed);
       return const NotionPushResult.error('未绑定句子数据库，无法同步。');
     }
