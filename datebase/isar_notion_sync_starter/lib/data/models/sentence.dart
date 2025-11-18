@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/adapters/notion_mappers.dart';
 
@@ -102,6 +103,12 @@ class Sentence {
 
   void ensureExternalKey() {
     if (externalKey != null && externalKey!.isNotEmpty) return;
+    final base = text.trim().toLowerCase();
+    if (base.isNotEmpty) {
+      final hash = base64Url.encode(utf8.encode(base));
+      externalKey = 'sent-$hash';
+      return;
+    }
     final ts = DateTime.now().microsecondsSinceEpoch;
     _extKeyNonce = (_extKeyNonce + 1) % 1000000;
     externalKey = 'sent-$ts-$_extKeyNonce';
