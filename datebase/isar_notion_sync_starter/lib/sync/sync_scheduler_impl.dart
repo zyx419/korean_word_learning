@@ -69,6 +69,14 @@ class SyncSchedulerImpl implements SyncScheduler {
       if (handler == null) {
         _logger.warn('1117-debug no handler registered',
             data: {'entityType': it.entityType, 'queueId': it.queueId});
+        await _isar.writeTxn(() async {
+          it.status = 'failed';
+          it.lastErrorCode = 'NO_HANDLER';
+          it.lastErrorMessage = '缺少处理器';
+          it.attempt += 1;
+          it.updatedAt = DateTime.now();
+          await _isar.syncQueueItems.put(it);
+        });
         continue;
       }
       await _isar.writeTxn(() async {
@@ -89,15 +97,13 @@ class SyncSchedulerImpl implements SyncScheduler {
         final res = await handler.handle(job);
         await _isar.writeTxn(() async {
           if (res.ok) {
-            it.status = 'success';
+            await _isar.syncQueueItems.delete(it.id);
           } else {
             it.status = 'failed';
             it.lastErrorCode = res.errorCode;
             it.lastErrorMessage = res.errorMessage;
             it.attempt += 1;
           }
-          it.updatedAt = DateTime.now();
-          await _isar.syncQueueItems.put(it);
         });
       } catch (e) {
         await _isar.writeTxn(() async {
