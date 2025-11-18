@@ -47,3 +47,5 @@ app.*.map.json
 # Local developer scripts (keep secrets out of VCS)
 *.local.ps1
 scripts.local/
+debug_verify.txt
+data/sample_sentences.txt
