@@ -108,6 +108,33 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     });
   }
 
+  Future<void> _deleteAll() async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('删除全部队列'),
+            content: const Text('确认删除所有同步队列记录吗？此操作不可恢复。'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final isar = isarService.isar;
+    await isar.writeTxn(() async {
+      await isar.syncQueueItems.where().anyId().deleteAll();
+    });
+    if (mounted) _snack('已删除全部队列记录');
+  }
+
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -149,12 +176,16 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
                   await _clearSuccess();
                   _snack('已清理成功任务');
                   break;
+                case 'delete_all':
+                  await _deleteAll();
+                  break;
               }
             },
             itemBuilder: (ctx) => const [
               PopupMenuItem(value: 'retry_failed', child: Text('重试失败全部')),
               PopupMenuItem(value: 'cancel_pending', child: Text('取消待处理全部')),
               PopupMenuItem(value: 'clear_success', child: Text('清理成功记录')),
+              PopupMenuItem(value: 'delete_all', child: Text('删除全部记录')),
             ],
           ),
         ],

@@ -131,6 +131,7 @@ class _LearningPageState extends State<LearningPage> {
 
   @override
   Widget build(BuildContext context) {
+    final allVisibleSelected = _areAllVisibleSelected();
     final theme = Theme.of(context);
     final readingTheme = theme.copyWith(
       scaffoldBackgroundColor: _themeColors.background,
@@ -163,6 +164,13 @@ class _LearningPageState extends State<LearningPage> {
                   _bulkSelectMode ? Icons.close : Icons.check_box_outlined),
               onPressed: _toggleBulkSelectMode,
             ),
+            if (_bulkSelectMode)
+              IconButton(
+                tooltip: allVisibleSelected ? '取消全选' : '全选当前列表',
+                icon: Icon(
+                    allVisibleSelected ? Icons.check_box : Icons.select_all),
+                onPressed: _toggleSelectAllVisible,
+              ),
             PopupMenuButton<FamiliarState?>(
               tooltip: '筛选熟练度',
               icon: Icon(
@@ -703,6 +711,31 @@ class _LearningPageState extends State<LearningPage> {
         _selectedSentenceIds.add(sentenceId);
       } else {
         _selectedSentenceIds.remove(sentenceId);
+      }
+    });
+  }
+
+  bool _areAllVisibleSelected() {
+    final visible = _filterSentences(_sentences);
+    if (visible.isEmpty) return false;
+    return visible.every((s) => _selectedSentenceIds.contains(s.id));
+  }
+
+  void _toggleSelectAllVisible() {
+    if (!_bulkSelectMode) return;
+    final visible = _filterSentences(_sentences);
+    if (visible.isEmpty) return;
+    final fullySelected =
+        visible.every((s) => _selectedSentenceIds.contains(s.id));
+    setState(() {
+      if (fullySelected) {
+        for (final s in visible) {
+          _selectedSentenceIds.remove(s.id);
+        }
+      } else {
+        for (final s in visible) {
+          _selectedSentenceIds.add(s.id);
+        }
       }
     });
   }
