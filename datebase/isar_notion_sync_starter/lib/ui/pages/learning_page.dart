@@ -740,6 +740,40 @@ class _LearningPageState extends State<LearningPage> {
     });
   }
 
+  Future<void> _enqueueSentenceSync(Sentence sentence, {String? op}) async {
+    final scheduler = _scheduler;
+    if (scheduler == null) return;
+    sentence.ensureExternalKey();
+    await scheduler.enqueue(
+      entityType: 'sentence',
+      op: op ?? (sentence.notionPageId == null ? 'create' : 'update'),
+      entityLocalKey: sentence.externalKey ?? '${sentence.id}',
+      remoteId: sentence.notionPageId,
+      payload: {
+        'externalKey': sentence.externalKey,
+        'text': sentence.text,
+      },
+      status: 'pending',
+    );
+    unawaited(scheduler.runOnce());
+  }
+
+  Future<void> _enqueueHighlightDeletion(Highlight highlight) async {
+    final scheduler = _scheduler;
+    if (scheduler == null) return;
+    await scheduler.enqueue(
+      entityType: 'highlight',
+      op: 'delete',
+      entityLocalKey: '${highlight.id}',
+      remoteId: highlight.notionPageId,
+      payload: {
+        'externalKey': highlight.externalKey,
+        'sentenceExternalKey': highlight.sentenceExternalKey,
+      },
+    );
+    unawaited(scheduler.runOnce());
+  }
+
   Future<void> _showImportDialog() async {
     final controller = TextEditingController();
     FamiliarState selected = FamiliarState.unfamiliar;
@@ -837,34 +871,8 @@ class _LearningPageState extends State<LearningPage> {
       }
     });
     await _reloadSentences();
-    final push = _pushService;
-    if (push != null) {
-      for (final sentence in sentences) {
-        sentence.ensureExternalKey();
-        final result = await push.upsertSentence(sentence);
-        if (!result.ok) {
-          if (sentence.id != Isar.autoIncrement) {
-            await _setSentenceStatus(sentence.id, SyncStatus.failed);
-          }
-          final scheduler = _scheduler;
-          if (scheduler != null) {
-            await scheduler.enqueue(
-              entityType: 'sentence',
-              op: 'create',
-              entityLocalKey: sentence.externalKey ?? '${sentence.id}',
-              payload: {
-                'externalKey': sentence.externalKey,
-                'text': sentence.text,
-              },
-              status: 'failed',
-              errorCode: result.skipped ? null : 'PUSH',
-              errorMessage: result.message,
-            );
-            unawaited(scheduler.runOnce());
-          }
-        }
-        await Future.delayed(_notionThrottleDelay);
-      }
+    for (final sentence in sentences) {
+      await _enqueueSentenceSync(sentence, op: 'create');
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -903,7 +911,6 @@ class _LearningPageState extends State<LearningPage> {
     final isar = _isar;
     if (isar == null) return;
     final ids = List<int>.from(_selectedSentenceIds);
-    final push = _pushService;
     final toUpsert = <Sentence>[];
     final toDelete = <Sentence>[];
     await isar.writeTxn(() async {
@@ -935,37 +942,11 @@ class _LearningPageState extends State<LearningPage> {
         }
       }
     });
-    if (push != null) {
-      for (final sentence in toUpsert) {
-        sentence.ensureExternalKey();
-        final result = await push.upsertSentence(sentence);
-        if (!result.ok) {
-          if (sentence.id != Isar.autoIncrement) {
-            await _setSentenceStatus(sentence.id, SyncStatus.failed);
-          }
-          final scheduler = _scheduler;
-          if (scheduler != null) {
-            await scheduler.enqueue(
-              entityType: 'sentence',
-              op: 'create',
-              entityLocalKey: sentence.externalKey ?? '${sentence.id}',
-              payload: {
-                'externalKey': sentence.externalKey,
-                'text': sentence.text,
-              },
-              status: 'failed',
-              errorCode: 'PUSH',
-              errorMessage: result.message,
-            );
-            unawaited(scheduler.runOnce());
-          }
-        }
-        await Future.delayed(_notionThrottleDelay);
-      }
+    for (final sentence in toUpsert) {
+      await _enqueueSentenceSync(sentence);
     }
     for (final sentence in toDelete) {
       await _deleteSentence(sentence);
-      await Future.delayed(_notionThrottleDelay);
     }
     await _reloadSentences();
     setState(() {
@@ -1146,10 +1127,7 @@ class _LearningPageState extends State<LearningPage> {
     await isar.writeTxn(() async {
       await isar.sentences.put(sentence);
     });
-    final push = _pushService;
-    if (push != null) {
-      await push.upsertSentence(sentence);
-    }
+    await _enqueueSentenceSync(sentence);
     if (reload) {
       await _reloadSentences();
     }
@@ -1174,9 +1152,9 @@ class _LearningPageState extends State<LearningPage> {
         await isar.highlights.put(h);
       }
     });
-    unawaited(_pushSentenceDeletion(sentence));
+    await _enqueueSentenceSync(sentence, op: 'delete');
     for (final h in relatedHighlights) {
-      unawaited(_pushHighlightDeletion(h));
+      await _enqueueHighlightDeletion(h);
     }
   }
 
