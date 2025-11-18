@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.isar_notion_sync_starter"
-    compileSdk = 36
+    compileSdk = 34
+    buildToolsVersion = "34.0.0"
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -25,7 +26,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = 36
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

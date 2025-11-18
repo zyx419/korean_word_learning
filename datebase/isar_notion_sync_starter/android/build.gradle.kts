@@ -31,7 +31,8 @@ subprojects {
         plugins.withId("com.android.library") {
             extensions.configure<LibraryExtension> {
                 namespace = "com.isar_flutter_libs"
-                compileSdk = 36
+                compileSdk = 34
+                buildToolsVersion = "34.0.0"
             }
         }
         // Remove deprecated manifest package attribute to satisfy AGP 8+
@@ -51,7 +52,8 @@ subprojects {
 subprojects {
     plugins.withId("com.android.library") {
         extensions.configure<LibraryExtension> {
-            compileSdk = 36
+            compileSdk = 34
+            buildToolsVersion = "34.0.0"
         }
     }
 }
