@@ -832,7 +832,9 @@ class _LearningPageState extends State<LearningPage> {
       {FamiliarState defaultState = FamiliarState.unfamiliar}) async {
     final isar = _isar;
     if (isar == null) return;
+    // 用字符/数字判断句子是否有实际内容
     final RegExp meaningful = RegExp(r'[\p{Letter}\p{Number}]', unicode: true);
+    // 按行拆分，并在循环里完成去重与结构化解析
     final lines = raw.split(RegExp(r'\r?\n'));
     final seenTexts = <String>{};
     final sentences = <Sentence>[];
@@ -844,8 +846,10 @@ class _LearningPageState extends State<LearningPage> {
         sentences.add(structured);
         continue;
       }
+      // 非结构化行，仅包含符号则跳过
       if (!meaningful.hasMatch(trimmed)) continue;
       final key = trimmed.toLowerCase();
+      // 忽略重复句子
       if (!seenTexts.add(key)) continue;
       final sentence = Sentence()
         ..text = trimmed
@@ -855,6 +859,7 @@ class _LearningPageState extends State<LearningPage> {
       sentence.ensureExternalKey();
       sentences.add(sentence);
     }
+    // 再次过滤无意义内容（结构化解析可能带来空文本）
     sentences.removeWhere((s) => !meaningful.hasMatch(s.text));
     if (sentences.isEmpty) {
       if (mounted) {
@@ -864,6 +869,7 @@ class _LearningPageState extends State<LearningPage> {
       }
       return;
     }
+    // 写入本地库，确保 id 回填
     await isar.writeTxn(() async {
       for (final sentence in sentences) {
         final id = await isar.sentences.put(sentence);
@@ -871,6 +877,7 @@ class _LearningPageState extends State<LearningPage> {
       }
     });
     await _reloadSentences();
+    // 将新增句子推入同步队列
     for (final sentence in sentences) {
       await _enqueueSentenceSync(sentence, op: 'create');
     }

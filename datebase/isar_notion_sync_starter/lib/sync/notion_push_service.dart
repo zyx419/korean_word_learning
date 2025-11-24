@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
+import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/data/remote/notion_api.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler.dart';
@@ -265,20 +267,50 @@ class NotionPushService {
     final scheduler = _scheduler;
     if (scheduler == null) return;
     try {
-      await scheduler.enqueue(
-        entityType: entityType,
-        op: op,
-        entityLocalKey: localKey,
-        remoteId: remoteId,
-        payload: {
-          ...?payload,
-          'lastError': '$error',
-        },
-        priority: 5,
-        status: status,
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-      );
+      final existingPending = await _isar.syncQueueItems
+          .filter()
+          .entityTypeEqualTo(entityType, caseSensitive: false)
+          .entityLocalKeyEqualTo(localKey, caseSensitive: false)
+          .statusEqualTo('pending')
+          .findFirst();
+      final existing = existingPending ??
+          await _isar.syncQueueItems
+              .filter()
+              .entityTypeEqualTo(entityType, caseSensitive: false)
+              .entityLocalKeyEqualTo(localKey, caseSensitive: false)
+              .statusEqualTo('failed')
+              .findFirst();
+      final encodedPayload =
+          jsonEncode({...?payload, 'lastError': '$error'});
+      if (existing != null) {
+        await _isar.writeTxn(() async {
+          existing
+            ..op = op
+            ..entityNotionPageId = remoteId
+            ..payload = encodedPayload
+            ..status = status
+            ..priority = 5
+            ..lastErrorCode = errorCode
+            ..lastErrorMessage = errorMessage
+            ..updatedAt = DateTime.now();
+          await _isar.syncQueueItems.put(existing);
+        });
+      } else {
+        await scheduler.enqueue(
+          entityType: entityType,
+          op: op,
+          entityLocalKey: localKey,
+          remoteId: remoteId,
+          payload: {
+            ...?payload,
+            'lastError': '$error',
+          },
+          priority: 5,
+          status: status,
+          errorCode: errorCode,
+          errorMessage: errorMessage,
+        );
+      }
       unawaited(scheduler.runOnce());
     } catch (e, st) {
       _logger.error('Failed to enqueue sync job',

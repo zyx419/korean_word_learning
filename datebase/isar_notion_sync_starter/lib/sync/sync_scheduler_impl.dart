@@ -87,21 +87,27 @@ class SyncSchedulerImpl implements SyncScheduler {
         await _isar.writeTxn(() async {
           if (res.ok) {
             it.status = 'success';
+            it.lastErrorCode = null;
+            it.lastErrorMessage = null;
           } else {
-            it.status = 'failed';
+            final attempt = it.attempt + 1;
+            final max = it.maxAttempt <= 0 ? 5 : it.maxAttempt;
+            it.attempt = attempt;
+            it.status = attempt >= max ? 'failed' : 'pending';
             it.lastErrorCode = res.errorCode;
             it.lastErrorMessage = res.errorMessage;
-            it.attempt += 1;
           }
           it.updatedAt = DateTime.now();
           await _isar.syncQueueItems.put(it);
         });
       } catch (e) {
         await _isar.writeTxn(() async {
-          it.status = 'failed';
+          final attempt = it.attempt + 1;
+          final max = it.maxAttempt <= 0 ? 5 : it.maxAttempt;
+          it.attempt = attempt;
+          it.status = attempt >= max ? 'failed' : 'pending';
           it.lastErrorCode = 'RUNTIME';
           it.lastErrorMessage = '$e';
-          it.attempt += 1;
           it.updatedAt = DateTime.now();
           await _isar.syncQueueItems.put(it);
         });
