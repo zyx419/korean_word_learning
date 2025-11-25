@@ -1,17 +1,21 @@
 import 'dart:convert';
 import 'dart:async';
-import '../data/models/sync_queue_item.dart';
-import 'sync_scheduler.dart';
 import 'package:isar/isar.dart';
-import '../utils/app_logger.dart';
+import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
+import 'package:isar_notion_sync_starter/sync/sync_progress_notifier.dart';
+import 'package:isar_notion_sync_starter/utils/app_logger.dart';
+
+import 'sync_scheduler.dart';
 
 class SyncSchedulerImpl implements SyncScheduler {
-  SyncSchedulerImpl(this._isar);
+  SyncSchedulerImpl(this._isar, {SyncProgressNotifier? progressNotifier})
+      : _progressNotifier = progressNotifier;
   final Isar _isar;
   final _handlers = <String, SyncHandler>{};
   bool _online = true;
   bool _running = false;
   final AppLogger _logger = AppLogger.instance;
+  final SyncProgressNotifier? _progressNotifier;
 
   @override
   void registerHandler(String entityType, SyncHandler handler) {
@@ -45,6 +49,9 @@ class SyncSchedulerImpl implements SyncScheduler {
       ..lastErrorMessage = errorMessage;
 
     await _isar.writeTxn(() async => await _isar.syncQueueItems.put(item));
+    _logger.debug('enqueue_sync_item',
+        data: {'entity': entityType, 'op': op, 'queueId': item.queueId});
+    await _progressNotifier?.refresh();
   }
 
   @override
@@ -62,6 +69,11 @@ class SyncSchedulerImpl implements SyncScheduler {
         .thenByUpdatedAt()
         .limit(10)
         .findAll();
+    if (items.isEmpty) {
+      _logger.debug('sync_run_no_pending');
+    } else {
+      _logger.debug('sync_run_batch', data: {'size': items.length});
+    }
 
     for (final it in items) {
       final handler = _handlers[it.entityType];
@@ -101,6 +113,7 @@ class SyncSchedulerImpl implements SyncScheduler {
           await _isar.syncQueueItems.put(it);
         });
       } catch (e) {
+        _logger.error('sync_handler_exception', error: e);
         await _isar.writeTxn(() async {
           final attempt = it.attempt + 1;
           final max = it.maxAttempt <= 0 ? 5 : it.maxAttempt;
@@ -113,6 +126,7 @@ class SyncSchedulerImpl implements SyncScheduler {
         });
       }
     }
+    await _progressNotifier?.refresh();
   }
 
   @override

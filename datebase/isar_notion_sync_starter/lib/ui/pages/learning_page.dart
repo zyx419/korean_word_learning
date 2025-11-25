@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
@@ -303,8 +304,8 @@ class _LearningPageState extends State<LearningPage> {
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 24),
               color: Colors.red.withValues(alpha: 0.2),
-              child: Row(
-                children: const [
+              child: const Row(
+                children: [
                   Icon(Icons.delete_outline, color: Colors.red),
                   SizedBox(width: 8),
                   Text('删除句子'),
@@ -315,9 +316,9 @@ class _LearningPageState extends State<LearningPage> {
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.symmetric(horizontal: 24),
               color: Theme.of(context).colorScheme.secondaryContainer,
-              child: Row(
+              child: const Row(
                 mainAxisAlignment: MainAxisAlignment.end,
-                children: const [
+                children: [
                   Text('提升熟练度'),
                   SizedBox(width: 8),
                   Icon(Icons.trending_up),
@@ -506,6 +507,42 @@ class _LearningPageState extends State<LearningPage> {
     }
   }
 
+  Sentence? _findSentenceById(int id) {
+    for (final sentence in _sentences) {
+      if (sentence.id == id) return sentence;
+    }
+    return null;
+  }
+
+  String? _clipSentenceText(String text, Highlight highlight) {
+    if (text.isEmpty) return null;
+    final start = highlight.start.clamp(0, text.length);
+    final end = highlight.end.clamp(start, text.length);
+    if (start >= end) return null;
+    return text.substring(start, end);
+  }
+
+  Future<String?> _resolveHighlightText(Highlight highlight) async {
+    final localSentence = _findSentenceById(highlight.sentenceLocalId);
+    if (localSentence != null) {
+      return _clipSentenceText(localSentence.text, highlight);
+    }
+    final isar = _isar;
+    if (isar == null) return null;
+    final remoteSentence = await isar.sentences.get(highlight.sentenceLocalId);
+    if (remoteSentence == null) return null;
+    return _clipSentenceText(remoteSentence.text, highlight);
+  }
+
+  Future<void> _copyHighlightText(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    final preview = text.length > 30 ? '${text.substring(0, 30)}…' : text;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已复制：$preview')),
+    );
+  }
+
   void _exitSelectionMode() {
     setState(() {
       _selectionMode = false;
@@ -526,6 +563,7 @@ class _LearningPageState extends State<LearningPage> {
   Future<void> _editHighlight(Highlight highlight) async {
     final controller = TextEditingController(text: highlight.note ?? '');
     String selectedColor = highlight.color;
+    final copyableText = await _resolveHighlightText(highlight);
     final result = await showModalBottomSheet<_HighlightEditResult>(
       context: context,
       showDragHandle: true,
@@ -558,6 +596,14 @@ class _LearningPageState extends State<LearningPage> {
                     controller: controller,
                     decoration: const InputDecoration(labelText: '备注'),
                     maxLines: 3,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: (copyableText == null || copyableText.isEmpty)
+                        ? null
+                        : () => _copyHighlightText(copyableText),
+                    icon: const Icon(Icons.copy_outlined),
+                    label: const Text('复制所选文本'),
                   ),
                   const SizedBox(height: 12),
                   Row(

@@ -1,3 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
@@ -14,6 +20,70 @@ const String kDefaultToken = String.fromEnvironment('NOTION_TOKEN', defaultValue
 const String kDefaultDb1 = String.fromEnvironment('DB_SENTENCES_URL', defaultValue: '');
 const String kDefaultDb2 = String.fromEnvironment('DB_HIGHLIGHTS_URL', defaultValue: '');
 const String kDefaultDb3 = String.fromEnvironment('DB_PREFS_URL', defaultValue: '');
+
+const JsonEncoder _prettyJsonEncoder = JsonEncoder.withIndent('  ');
+
+class SettingsConfig {
+  SettingsConfig({
+    required this.token,
+    required this.dbSentences,
+    required this.dbHighlights,
+    required this.dbPrefs,
+  });
+
+  final String token;
+  final String dbSentences;
+  final String dbHighlights;
+  final String dbPrefs;
+
+  bool get isEmpty =>
+      token.trim().isEmpty &&
+      dbSentences.trim().isEmpty &&
+      dbHighlights.trim().isEmpty &&
+      dbPrefs.trim().isEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'token': token,
+        'dbSentences': dbSentences,
+        'dbHighlights': dbHighlights,
+        'dbPrefs': dbPrefs,
+      };
+
+  factory SettingsConfig.fromJson(Map<String, dynamic> json) {
+    return SettingsConfig(
+      token: (json['token'] ?? '').toString(),
+      dbSentences: (json['dbSentences'] ?? '').toString(),
+      dbHighlights: (json['dbHighlights'] ?? '').toString(),
+      dbPrefs: (json['dbPrefs'] ?? '').toString(),
+    );
+  }
+
+  factory SettingsConfig.fromControllers(
+    TextEditingController tokenCtl,
+    TextEditingController sentencesCtl,
+    TextEditingController highlightsCtl,
+    TextEditingController prefsCtl,
+  ) {
+    return SettingsConfig(
+      token: tokenCtl.text.trim(),
+      dbSentences: sentencesCtl.text.trim(),
+      dbHighlights: highlightsCtl.text.trim(),
+      dbPrefs: prefsCtl.text.trim(),
+    );
+  }
+
+  void applyToControllers(
+    TextEditingController tokenCtl,
+    TextEditingController sentencesCtl,
+    TextEditingController highlightsCtl,
+    TextEditingController prefsCtl,
+  ) {
+    tokenCtl.text = token;
+    sentencesCtl.text = dbSentences;
+    highlightsCtl.text = dbHighlights;
+    prefsCtl.text = dbPrefs;
+  }
+}
 
 /// App settings to configure Notion connectivity.
 ///
@@ -36,6 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _dbHighlightsCtl = TextEditingController();
   final _dbPrefsCtl = TextEditingController();
   bool _loading = false;
+  bool _fileBusy = false;
   String _statusText = '';
   DateTime? _testedAt;
   String? _db1Name;
@@ -111,7 +182,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// Persist token and any non-empty database bindings locally without contacting Notion.
-  Future<void> _saveOnly() async {
+  Future<void> _saveOnly({bool showToast = true}) async {
     final token = _tokenCtl.text.trim();
     if (token.isEmpty &&
         _dbSentencesCtl.text.trim().isEmpty &&
@@ -147,7 +218,9 @@ class _SettingsPageState extends State<SettingsPage> {
       await saveBinding(1, _dbSentencesCtl);
       await saveBinding(2, _dbHighlightsCtl);
       await saveBinding(3, _dbPrefsCtl);
-      _snack('已保存');
+      if (showToast) {
+        _snack('已保存');
+      }
     } catch (e) {
       _snack('保存失败：$e');
     }
@@ -239,6 +312,109 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _exportConfig() async {
+    if (_fileBusy) return;
+    setState(() => _fileBusy = true);
+    try {
+      final config = SettingsConfig.fromControllers(_tokenCtl, _dbSentencesCtl, _dbHighlightsCtl, _dbPrefsCtl);
+      if (config.isEmpty) {
+        _snack('暂无可导出的配置');
+        return;
+      }
+      final fileName = 'notion_config_${_fileTimestamp()}.json';
+      final jsonPayload = _prettyJsonEncoder.convert(config.toJson());
+      final bytes = Uint8List.fromList(utf8.encode(jsonPayload));
+      try {
+        final savedPath = await FilePicker.platform.saveFile(
+          dialogTitle: '导出配置',
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: const ['json'],
+          bytes: bytes,
+        );
+        if (savedPath == null) {
+          _snack('已取消导出');
+        } else {
+          _snack('已导出：$savedPath');
+        }
+      } on UnimplementedError {
+        final fallbackPath = await _manualSaveConfig(fileName, bytes);
+        if (fallbackPath == null) {
+          _snack('已取消导出');
+        } else {
+          _snack('已导出至：$fallbackPath');
+        }
+      }
+    } catch (e) {
+      _snack('导出失败：$e');
+    } finally {
+      if (mounted) setState(() => _fileBusy = false);
+    }
+  }
+
+  Future<void> _importConfig() async {
+    if (_fileBusy) return;
+    setState(() => _fileBusy = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        _snack('已取消导入');
+        return;
+      }
+      final file = result.files.first;
+      String? content;
+      if (file.bytes != null) {
+        content = utf8.decode(file.bytes!);
+      } else if (!kIsWeb && file.path != null) {
+        content = await File(file.path!).readAsString();
+      }
+      if (content == null) {
+        _snack('无法读取所选文件');
+        return;
+      }
+      final decoded = jsonDecode(content);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('JSON 结构无效');
+      }
+      final config = SettingsConfig.fromJson(decoded);
+      config.applyToControllers(_tokenCtl, _dbSentencesCtl, _dbHighlightsCtl, _dbPrefsCtl);
+      _db1Name = _db2Name = _db3Name = null;
+      await _saveOnly(showToast: false);
+      if (mounted) setState(() {});
+      _snack('导入成功并已保存');
+    } catch (e) {
+      _snack('导入失败：$e');
+    } finally {
+      if (mounted) setState(() => _fileBusy = false);
+    }
+  }
+
+  Future<String?> _manualSaveConfig(String fileName, Uint8List bytes) async {
+    if (kIsWeb) return null;
+    final directory = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择保存文件夹');
+    if (directory == null) return null;
+    final path = _joinPath(directory, fileName);
+    final file = File(path);
+    await file.writeAsBytes(bytes);
+    return path;
+  }
+
+  String _joinPath(String directory, String fileName) {
+    final separator = Platform.pathSeparator;
+    if (directory.endsWith(separator)) {
+      return '$directory$fileName';
+    }
+    return '$directory$separator$fileName';
+  }
+
+  String _fileTimestamp() {
+    return DateTime.now().toIso8601String().replaceAll(':', '-');
+  }
+
   /// Small helper to surface messages as SnackBars.
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -247,6 +423,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final caption = Theme.of(context).textTheme.bodySmall;
+    final buttonsDisabled = _loading || _fileBusy;
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: Padding(
@@ -308,17 +485,39 @@ class _SettingsPageState extends State<SettingsPage> {
                 children: [
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _loading ? null : _saveOnly,
+                      onPressed: buttonsDisabled ? null : _saveOnly,
                       child: const Text('仅保存'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _loading ? null : _saveAndTest,
+                      onPressed: buttonsDisabled ? null : _saveAndTest,
                       child: _loading
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Text('保存并测试（全部）'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: buttonsDisabled ? null : _exportConfig,
+                      child: _fileBusy
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('导出 JSON'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: buttonsDisabled ? null : _importConfig,
+                      child: _fileBusy
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('导入 JSON'),
                     ),
                   ),
                 ],

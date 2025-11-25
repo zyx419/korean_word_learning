@@ -63,6 +63,17 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
     });
   }
 
+  Future<void> _forcePending(SyncQueueItem item) async {
+    if (item.status != 'syncing') return;
+    final isar = isarService.isar;
+    await isar.writeTxn(() async {
+      item.status = 'pending';
+      item.updatedAt = DateTime.now();
+      await isar.syncQueueItems.put(item);
+    });
+    if (mounted) _snack('已强制重置为待处理');
+  }
+
   Future<void> _deleteItem(SyncQueueItem item) async {
     final isar = isarService.isar;
     await isar.writeTxn(() async {
@@ -352,6 +363,7 @@ class _SyncQueuePageState extends State<SyncQueuePage> {
         return _ItemTile(
           item: items[i],
           onRetry: () => _retryItem(items[i]),
+          onForcePending: () => _forcePending(items[i]),
           onCancel: () => _cancelItem(items[i]),
           onDelete: () => _deleteItem(items[i]),
         );
@@ -413,10 +425,12 @@ class _ItemTile extends StatefulWidget {
   const _ItemTile(
       {required this.item,
       required this.onRetry,
+      required this.onForcePending,
       required this.onCancel,
       required this.onDelete});
   final SyncQueueItem item;
   final VoidCallback onRetry;
+  final VoidCallback onForcePending;
   final VoidCallback onCancel;
   final VoidCallback onDelete;
 
@@ -470,8 +484,14 @@ class _ItemTileState extends State<_ItemTile> {
                 Wrap(spacing: 4, children: [
                   _statusChip(it.status),
                   IconButton(
-                      tooltip: '重试',
-                      onPressed: it.status == 'failed' ? widget.onRetry : null,
+                      tooltip: it.status == 'failed'
+                          ? '重试'
+                          : '强制重置为待处理',
+                      onPressed: it.status == 'failed'
+                          ? widget.onRetry
+                          : (it.status == 'syncing'
+                              ? widget.onForcePending
+                              : null),
                       icon: const Icon(Icons.refresh)),
                   IconButton(
                       tooltip: '取消',
