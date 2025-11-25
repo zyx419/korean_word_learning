@@ -374,7 +374,8 @@ class _LearningPageState extends State<LearningPage> {
       int sentenceId, TextSelection selection, SelectionChangedCause? cause) {
     final reason = cause ?? SelectionChangedCause.tap;
     if (reason == SelectionChangedCause.tap && !_selectionMode) return;
-    if (reason == SelectionChangedCause.longPress || _selectionMode) {
+    final isLongPress = reason == SelectionChangedCause.longPress;
+    if (isLongPress || _selectionMode) {
       if (!_selectionMode) {
         setState(() {
           _selectionMode = true;
@@ -1396,8 +1397,24 @@ class _SentenceBlockState extends State<_SentenceBlock> {
       }
       if (end > start) {
         final color = _highlightColors[h.color] ?? _highlightColors['yellow']!;
+        DateTime? tapDownTime;
         final recognizer = TapGestureRecognizer()
-          ..onTap = () => widget.onHighlightTap(h);
+          // Treat short tap as “edit highlight”; let long-press fall through to selection.
+          ..onTapDown = (_) {
+            tapDownTime = DateTime.now();
+          }
+          ..onTapCancel = () {
+            tapDownTime = null;
+          }
+          ..onTapUp = (_) {
+            final down = tapDownTime;
+            tapDownTime = null;
+            if (down == null) return;
+            final elapsed = DateTime.now().difference(down);
+            if (elapsed < kLongPressTimeout) {
+              widget.onHighlightTap(h);
+            }
+          };
         _recognizers.add(recognizer);
         spans.add(TextSpan(
           text: text.substring(start, end),
