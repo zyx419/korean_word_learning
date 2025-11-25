@@ -9,6 +9,7 @@ import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
 import 'package:isar_notion_sync_starter/data/remote/notion_api.dart';
 import 'package:isar_notion_sync_starter/main.dart';
+import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 
 // Optional defaults injected via --dart-define at run time.
 // Example:
@@ -109,6 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _fileBusy = false;
   String _statusText = '';
   DateTime? _testedAt;
+  DateTime? _lastSyncedAt;
   String? _db1Name;
   String? _db2Name;
   String? _db3Name;
@@ -132,6 +134,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _tokenCtl.text = auth.token;
       _statusText = auth.status;
       _testedAt = auth.testedAt;
+      _lastSyncedAt = auth.lastSyncedAt;
     }
     if (b1 != null) {
       _dbSentencesCtl.text = b1.rawUrl.isNotEmpty ? b1.rawUrl : b1.databaseId;
@@ -312,6 +315,28 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _triggerManualSync() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await isarService.init();
+      final isar = isarService.isar;
+      final auth = await isar.notionAuths.get(1);
+      if (auth == null || auth.token.isEmpty) {
+        _snack('请先保存 Notion Token 和数据库 ID');
+        return;
+      }
+      await NotionPullService(isar).pullAll();
+      final refreshed = await isar.notionAuths.get(1);
+      setState(() => _lastSyncedAt = refreshed?.lastSyncedAt);
+      _snack('已触发一次同步');
+    } catch (e) {
+      _snack('同步失败：$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _exportConfig() async {
     if (_fileBusy) return;
     setState(() => _fileBusy = true);
@@ -415,6 +440,14 @@ class _SettingsPageState extends State<SettingsPage> {
     return DateTime.now().toIso8601String().replaceAll(':', '-');
   }
 
+  String _formatLastSync() {
+    if (_lastSyncedAt == null) return '未同步';
+    final local = _lastSyncedAt!.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
   /// Small helper to surface messages as SnackBars.
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -480,6 +513,22 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 8),
               if (_statusText.isNotEmpty)
                 Text('上次结果：$_statusText${_testedAt != null ? ' @ ${_testedAt!.toLocal()}' : ''}', style: caption),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: buttonsDisabled ? null : _triggerManualSync,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('手动同步 Notion'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('上次同步：${_formatLastSync()}', style: caption),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [

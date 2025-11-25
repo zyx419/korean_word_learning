@@ -9,4 +9,5 @@ class NotionAuth {
   String status = 'untested'; // untested|success|error
   DateTime? testedAt;
   String? errorMessage;
+  DateTime? lastSyncedAt;
 }

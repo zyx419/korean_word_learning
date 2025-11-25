@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar_notion_sync_starter/data/local/isar_service.dart';
+import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
 import 'package:isar_notion_sync_starter/sync/sync_progress_notifier.dart';
@@ -30,7 +31,7 @@ void main() async {
       await isarService.init();
       await ensureGlobalSchedulerStarted();
       if (kDebugMode) debugPrint('Isar initialized');
-      await NotionPullService(isarService.isar).pullAll();
+      await _maybeAutoSync();
     } catch (e, st) {
       debugPrint('Isar init error: $e');
       debugPrint('$st');
@@ -70,4 +71,17 @@ Future<void> ensureGlobalSchedulerStarted() async {
     ..registerHandler('sentence', retryHandler);
   scheduler.runContinuous();
   globalSyncScheduler = scheduler;
+}
+
+Future<void> _maybeAutoSync() async {
+  final isar = isarService.isar;
+  final auth = await isar.notionAuths.get(1);
+  final now = DateTime.now();
+  const interval = Duration(hours: 4);
+  final last = auth?.lastSyncedAt;
+  final shouldSync = auth != null &&
+      auth.token.isNotEmpty &&
+      (last == null || now.difference(last) >= interval);
+  if (!shouldSync) return;
+  await NotionPullService(isar).pullAll();
 }

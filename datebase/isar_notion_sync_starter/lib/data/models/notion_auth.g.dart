@@ -22,18 +22,23 @@ const NotionAuthSchema = CollectionSchema(
       name: r'errorMessage',
       type: IsarType.string,
     ),
-    r'status': PropertySchema(
+    r'lastSyncedAt': PropertySchema(
       id: 1,
+      name: r'lastSyncedAt',
+      type: IsarType.dateTime,
+    ),
+    r'status': PropertySchema(
+      id: 2,
       name: r'status',
       type: IsarType.string,
     ),
     r'testedAt': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'testedAt',
       type: IsarType.dateTime,
     ),
     r'token': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'token',
       type: IsarType.string,
     )
@@ -76,9 +81,10 @@ void _notionAuthSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.errorMessage);
-  writer.writeString(offsets[1], object.status);
-  writer.writeDateTime(offsets[2], object.testedAt);
-  writer.writeString(offsets[3], object.token);
+  writer.writeDateTime(offsets[1], object.lastSyncedAt);
+  writer.writeString(offsets[2], object.status);
+  writer.writeDateTime(offsets[3], object.testedAt);
+  writer.writeString(offsets[4], object.token);
 }
 
 NotionAuth _notionAuthDeserialize(
@@ -90,9 +96,10 @@ NotionAuth _notionAuthDeserialize(
   final object = NotionAuth();
   object.errorMessage = reader.readStringOrNull(offsets[0]);
   object.id = id;
-  object.status = reader.readString(offsets[1]);
-  object.testedAt = reader.readDateTimeOrNull(offsets[2]);
-  object.token = reader.readString(offsets[3]);
+  object.lastSyncedAt = reader.readDateTimeOrNull(offsets[1]);
+  object.status = reader.readString(offsets[2]);
+  object.testedAt = reader.readDateTimeOrNull(offsets[3]);
+  object.token = reader.readString(offsets[4]);
   return object;
 }
 
@@ -106,10 +113,12 @@ P _notionAuthDeserializeProp<P>(
     case 0:
       return (reader.readStringOrNull(offset)) as P;
     case 1:
-      return (reader.readString(offset)) as P;
-    case 2:
       return (reader.readDateTimeOrNull(offset)) as P;
+    case 2:
+      return (reader.readString(offset)) as P;
     case 3:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 4:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -406,6 +415,80 @@ extension NotionAuthQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
         property: r'id',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastSyncedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastSyncedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtEqualTo(DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastSyncedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastSyncedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastSyncedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
+      lastSyncedAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastSyncedAt',
         lower: lower,
         includeLower: includeLower,
         upper: upper,
@@ -768,6 +851,18 @@ extension NotionAuthQuerySortBy
     });
   }
 
+  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByLastSyncedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastSyncedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByLastSyncedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastSyncedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'status', Sort.asc);
@@ -831,6 +926,18 @@ extension NotionAuthQuerySortThenBy
     });
   }
 
+  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> thenByLastSyncedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastSyncedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> thenByLastSyncedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastSyncedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> thenByStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'status', Sort.asc);
@@ -877,6 +984,12 @@ extension NotionAuthQueryWhereDistinct
     });
   }
 
+  QueryBuilder<NotionAuth, NotionAuth, QDistinct> distinctByLastSyncedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastSyncedAt');
+    });
+  }
+
   QueryBuilder<NotionAuth, NotionAuth, QDistinct> distinctByStatus(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -909,6 +1022,12 @@ extension NotionAuthQueryProperty
   QueryBuilder<NotionAuth, String?, QQueryOperations> errorMessageProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'errorMessage');
+    });
+  }
+
+  QueryBuilder<NotionAuth, DateTime?, QQueryOperations> lastSyncedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastSyncedAt');
     });
   }
 

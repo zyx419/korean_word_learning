@@ -34,6 +34,7 @@ class NotionPullService {
       return;
     }
 
+    final startedAt = DateTime.now();
     _logger.debug(
         'Using databases: sentences=${sentencesDb?.databaseId}, highlights=${highlightsDb?.databaseId}, prefs=${prefsDb?.databaseId}');
 
@@ -59,6 +60,15 @@ class NotionPullService {
         debugPrint('$st');
       }
     }
+    await _markLastSynced(startedAt);
+  }
+
+  Future<void> _markLastSynced(DateTime time) async {
+    await _isar.writeTxn(() async {
+      final auth = await _isar.notionAuths.get(1) ?? NotionAuth();
+      auth.lastSyncedAt = time;
+      await _isar.notionAuths.put(auth);
+    });
   }
 
   Future<void> _syncSentences(NotionApi api, String databaseId) async {

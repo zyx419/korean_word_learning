@@ -8,7 +8,6 @@ import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/main.dart';
-import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_push_service.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler_impl.dart';
 
@@ -22,7 +21,6 @@ class LearningPage extends StatefulWidget {
 
 class _LearningPageState extends State<LearningPage> {
   bool _loading = true;
-  bool _syncingRemote = false;
   Isar? _isar;
   List<Sentence> _sentences = const [];
   Map<int, List<Highlight>> _highlightMap = const {};
@@ -77,8 +75,8 @@ class _LearningPageState extends State<LearningPage> {
         .anyId()
         .watch(fireImmediately: true)
         .listen((items) {
-      final list = items.where((e) => e.deletedAt == null).toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final list =
+          _sortByCreatedDesc(items.where((e) => e.deletedAt == null).toList());
       setState(() {
         _sentences = list;
         _loading = false;
@@ -100,21 +98,6 @@ class _LearningPageState extends State<LearningPage> {
       }
       setState(() => _highlightMap = map);
     });
-
-    unawaited(_refreshFromNotion());
-  }
-
-  Future<void> _refreshFromNotion() async {
-    final isar = _isar;
-    if (isar == null || _syncingRemote || !mounted) return;
-    setState(() => _syncingRemote = true);
-    try {
-      await NotionPullService(isar).pullAll();
-    } finally {
-      if (mounted) {
-        setState(() => _syncingRemote = false);
-      }
-    }
   }
 
   @override
@@ -349,25 +332,21 @@ class _LearningPageState extends State<LearningPage> {
       children: [
         content,
         if (_selectionMode && items.isNotEmpty) _buildSelectionPalette(),
-        if (_syncingRemote)
-          const Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: SizedBox(
-                height: 2,
-                child: LinearProgressIndicator(),
-              ),
-            ),
-          ),
       ],
     );
   }
 
+  List<Sentence> _sortByCreatedDesc(List<Sentence> source) {
+    final sorted = List<Sentence>.from(source);
+    sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return sorted;
+  }
+
   List<Sentence> _filterSentences(List<Sentence> source) {
     if (_filterState == null) return source;
-    return source.where((s) => s.familiarState == _filterState).toList();
+    final filtered =
+        source.where((s) => s.familiarState == _filterState).toList();
+    return _sortByCreatedDesc(filtered);
   }
 
   void _handleSelection(
@@ -1111,8 +1090,8 @@ class _LearningPageState extends State<LearningPage> {
     final isar = _isar;
     if (isar == null) return;
     final items = await isar.sentences.where().anyId().findAll();
-    final list = items.where((e) => e.deletedAt == null).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final list =
+        _sortByCreatedDesc(items.where((e) => e.deletedAt == null).toList());
     if (!mounted) return;
     setState(() => _sentences = list);
   }
