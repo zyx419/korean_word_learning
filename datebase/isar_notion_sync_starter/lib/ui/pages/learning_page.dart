@@ -226,11 +226,18 @@ class _LearningPageState extends State<LearningPage> {
             : LayoutBuilder(
                 builder: (context, constraints) {
                   final showSidePanel = constraints.maxWidth >= 1024;
-                  final sentenceArea = _buildSentenceArea();
+                  final sentenceArea =
+                      _buildSentenceArea(isWideLayout: showSidePanel);
                   if (!showSidePanel) return sentenceArea;
+                  final constrainedSentenceArea = Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1000),
+                      child: sentenceArea,
+                    ),
+                  );
                   return Row(
                     children: [
-                      Expanded(flex: 6, child: sentenceArea),
+                      Expanded(flex: 6, child: constrainedSentenceArea),
                       const SizedBox(width: 24),
                       SizedBox(
                         width: 360,
@@ -254,7 +261,7 @@ class _LearningPageState extends State<LearningPage> {
     );
   }
 
-  Widget _buildSentenceArea() {
+  Widget _buildSentenceArea({required bool isWideLayout}) {
     final items = _filterSentences(_sentences);
     final Widget content;
     if (items.isEmpty) {
@@ -262,7 +269,10 @@ class _LearningPageState extends State<LearningPage> {
     } else {
       content = ListView.separated(
         controller: _scrollController,
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.symmetric(
+          horizontal: isWideLayout ? 24 : 16,
+          vertical: 16,
+        ),
         itemCount: items.length,
         separatorBuilder: (_, __) =>
             SizedBox(height: _prefs.paragraphSpacing.toDouble()),
