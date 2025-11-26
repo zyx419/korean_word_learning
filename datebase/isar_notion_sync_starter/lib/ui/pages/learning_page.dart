@@ -225,36 +225,22 @@ class _LearningPageState extends State<LearningPage> {
             ? const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
-                  final showSidePanel = constraints.maxWidth >= 1024;
-                  final sentenceArea =
-                      _buildSentenceArea(isWideLayout: showSidePanel);
-                  if (!showSidePanel) return sentenceArea;
-                  final constrainedSentenceArea = Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1000),
-                      child: sentenceArea,
-                    ),
-                  );
-                  return Row(
-                    children: [
-                      Expanded(flex: 6, child: constrainedSentenceArea),
-                      const SizedBox(width: 24),
-                      SizedBox(
-                        width: 360,
-                        child: Card(
-                          margin: EdgeInsets.zero,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: ReadingStylePanel(
-                              prefs: _prefs,
-                              onUpdate: _updatePrefs,
-                            ),
-                          ),
-                        ),
+                  final maxWidth = constraints.maxWidth;
+                  const centerBreakpoint = 768.0;
+                  final contentMaxWidth =
+                      maxWidth >= centerBreakpoint ? 760.0 : double.infinity;
+                  final sentenceArea = _buildSentenceArea(isWideLayout: false);
+                  Widget mainContent = sentenceArea;
+                  if (contentMaxWidth.isFinite) {
+                    mainContent = Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                        child: sentenceArea,
                       ),
-                      const SizedBox(width: 16),
-                    ],
-                  );
+                    );
+                  }
+                  return mainContent;
                 },
               ),
       ),
@@ -262,6 +248,9 @@ class _LearningPageState extends State<LearningPage> {
   }
 
   Widget _buildSentenceArea({required bool isWideLayout}) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTabletWidth = screenWidth >= 900;
+    final swipeThreshold = isTabletWidth ? 0.15 : 0.25;
     final items = _filterSentences(_sentences);
     final Widget content;
     if (items.isEmpty) {
@@ -281,6 +270,11 @@ class _LearningPageState extends State<LearningPage> {
           final highlights = _highlightMap[sentence.id] ?? const [];
           return Dismissible(
             key: ValueKey(sentence.id),
+            dragStartBehavior: DragStartBehavior.down,
+            dismissThresholds: {
+              DismissDirection.startToEnd: swipeThreshold,
+              DismissDirection.endToStart: swipeThreshold,
+            },
             direction: _bulkSelectMode
                 ? DismissDirection.none
                 : DismissDirection.horizontal,
