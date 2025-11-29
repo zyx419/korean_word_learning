@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
+import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
@@ -17,8 +18,8 @@ class NotionPullService {
   /// Pull sentences/highlights/prefs from Notion and upsert into Isar.
   Future<void> pullAll() async {
     _logger.info('Starting Notion pull');
-    final auth = await _isar.notionAuths.get(1);
-    if (auth == null || auth.token.isEmpty) {
+    final token = await secureTokenStorage.getToken();
+    if (token == null || token.isEmpty) {
       _logger.warn('Notion token not configured. Skipping pull.');
       return;
     }
@@ -38,7 +39,7 @@ class NotionPullService {
     _logger.debug(
         'Using databases: sentences=${sentencesDb?.databaseId}, highlights=${highlightsDb?.databaseId}, prefs=${prefsDb?.databaseId}');
 
-    final api = NotionApi(auth.token);
+    final api = NotionApi(token);
     try {
       if (sentencesDb != null && sentencesDb.databaseId.isNotEmpty) {
         _logger.info('Syncing sentences from ${sentencesDb.databaseId}');

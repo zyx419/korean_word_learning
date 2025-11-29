@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
 import 'package:isar_notion_sync_starter/data/remote/notion_api.dart';
@@ -126,16 +127,24 @@ class _SettingsPageState extends State<SettingsPage> {
     // Ensure the Isar instance is opened before CRUD.
     await isarService.init();
     final isar = isarService.isar;
+    
+    // 从安全存储读取 Token
+    final token = await secureTokenStorage.getToken();
+    if (token != null && token.isNotEmpty) {
+      _tokenCtl.text = token;
+    }
+    
+    // 读取其他认证状态信息（非敏感数据仍存在 Isar 中）
     final auth = await isar.notionAuths.get(1);
-    final b1 = await isar.notionDatabaseBindings.get(1);
-    final b2 = await isar.notionDatabaseBindings.get(2);
-    final b3 = await isar.notionDatabaseBindings.get(3);
     if (auth != null) {
-      _tokenCtl.text = auth.token;
       _statusText = auth.status;
       _testedAt = auth.testedAt;
       _lastSyncedAt = auth.lastSyncedAt;
     }
+    
+    final b1 = await isar.notionDatabaseBindings.get(1);
+    final b2 = await isar.notionDatabaseBindings.get(2);
+    final b3 = await isar.notionDatabaseBindings.get(3);
     if (b1 != null) {
       _dbSentencesCtl.text = b1.rawUrl.isNotEmpty ? b1.rawUrl : b1.databaseId;
       _db1Name = b1.databaseName.isNotEmpty ? b1.databaseName : null;
@@ -195,15 +204,15 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
+    // 保存 Token 到安全存储
+    if (token.isNotEmpty) {
+      await secureTokenStorage.saveToken(token);
+    } else {
+      await secureTokenStorage.deleteToken();
+    }
+
     await isarService.init();
     final isar = isarService.isar;
-    await isar.writeTxn(() async {
-      if (token.isNotEmpty) {
-        final auth = await isar.notionAuths.get(1) ?? NotionAuth();
-        auth.token = token;
-        await isar.notionAuths.put(auth);
-      }
-    });
 
     Future<void> saveBinding(int id, TextEditingController ctl) async {
       final raw = ctl.text.trim();
@@ -241,19 +250,21 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
 
+      // 1) Save token to secure storage first
+      await secureTokenStorage.saveToken(token);
+
       await isarService.init();
       final isar = isarService.isar;
 
-      // 1) Save first so the local store reflects latest user input.
+      // 2) Update auth status (non-sensitive data in Isar)
       await isar.writeTxn(() async {
         final auth = await isar.notionAuths.get(1) ?? NotionAuth();
-        auth.token = token;
         auth.status = 'testing';
         auth.errorMessage = null;
         await isar.notionAuths.put(auth);
       });
 
-      // 2) Connectivity check via Notion API (safe GET to databases/{id}).
+      // 3) Connectivity check via Notion API (safe GET to databases/{id}).
       final api = NotionApi(token);
       Future<void> saveAndTestOne(int id, TextEditingController ctl, void Function(String?) setName) async {
         final raw = ctl.text.trim();
@@ -281,7 +292,7 @@ class _SettingsPageState extends State<SettingsPage> {
       await saveAndTestOne(2, _dbHighlightsCtl, (v) => _db2Name = v);
       await saveAndTestOne(3, _dbPrefsCtl, (v) => _db3Name = v);
 
-      // 3) Mark overall success and time
+      // 4) Mark overall success and time
       await isar.writeTxn(() async {
         final auth = await isar.notionAuths.get(1) ?? NotionAuth();
         auth.status = 'success';
@@ -319,13 +330,13 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_loading) return;
     setState(() => _loading = true);
     try {
-      await isarService.init();
-      final isar = isarService.isar;
-      final auth = await isar.notionAuths.get(1);
-      if (auth == null || auth.token.isEmpty) {
+      final token = await secureTokenStorage.getToken();
+      if (token == null || token.isEmpty) {
         _snack('请先保存 Notion Token 和数据库 ID');
         return;
       }
+      await isarService.init();
+      final isar = isarService.isar;
       await NotionPullService(isar).pullAll();
       final refreshed = await isar.notionAuths.get(1);
       setState(() => _lastSyncedAt = refreshed?.lastSyncedAt);

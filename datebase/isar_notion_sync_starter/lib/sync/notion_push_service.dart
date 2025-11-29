@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:isar/isar.dart';
+import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
-import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
 import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
@@ -239,13 +239,13 @@ class NotionPushService {
   }
 
   Future<_NotionContext?> _loadContext() async {
-    final auth = await _isar.notionAuths.get(1);
-    if (auth == null || auth.token.isEmpty) return null;
+    final token = await secureTokenStorage.getToken();
+    if (token == null || token.isEmpty) return null;
     final bindings = await _isar.notionDatabaseBindings.getAll([1, 2]);
     final sentencesDb = bindings.isNotEmpty ? bindings[0] : null;
     final highlightDb = bindings.length > 1 ? bindings[1] : null;
     return _NotionContext(
-      api: NotionApi(auth.token),
+      api: NotionApi(token),
       sentencesDbId: _normalizeDbId(sentencesDb?.databaseId),
       highlightsDbId: _normalizeDbId(highlightDb?.databaseId),
     );

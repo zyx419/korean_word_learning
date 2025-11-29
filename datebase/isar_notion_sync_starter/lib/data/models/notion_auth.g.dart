@@ -36,11 +36,6 @@ const NotionAuthSchema = CollectionSchema(
       id: 3,
       name: r'testedAt',
       type: IsarType.dateTime,
-    ),
-    r'token': PropertySchema(
-      id: 4,
-      name: r'token',
-      type: IsarType.string,
     )
   },
   estimateSize: _notionAuthEstimateSize,
@@ -70,7 +65,6 @@ int _notionAuthEstimateSize(
     }
   }
   bytesCount += 3 + object.status.length * 3;
-  bytesCount += 3 + object.token.length * 3;
   return bytesCount;
 }
 
@@ -84,7 +78,6 @@ void _notionAuthSerialize(
   writer.writeDateTime(offsets[1], object.lastSyncedAt);
   writer.writeString(offsets[2], object.status);
   writer.writeDateTime(offsets[3], object.testedAt);
-  writer.writeString(offsets[4], object.token);
 }
 
 NotionAuth _notionAuthDeserialize(
@@ -99,7 +92,6 @@ NotionAuth _notionAuthDeserialize(
   object.lastSyncedAt = reader.readDateTimeOrNull(offsets[1]);
   object.status = reader.readString(offsets[2]);
   object.testedAt = reader.readDateTimeOrNull(offsets[3]);
-  object.token = reader.readString(offsets[4]);
   return object;
 }
 
@@ -118,8 +110,6 @@ P _notionAuthDeserializeProp<P>(
       return (reader.readString(offset)) as P;
     case 3:
       return (reader.readDateTimeOrNull(offset)) as P;
-    case 4:
-      return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -698,137 +688,6 @@ extension NotionAuthQueryFilter
       ));
     });
   }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenEqualTo(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenLessThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenBetween(
-    String lower,
-    String upper, {
-    bool includeLower = true,
-    bool includeUpper = true,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'token',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenContains(
-      String value,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'token',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenMatches(
-      String pattern,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'token',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition> tokenIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'token',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterFilterCondition>
-      tokenIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'token',
-        value: '',
-      ));
-    });
-  }
 }
 
 extension NotionAuthQueryObject
@@ -884,18 +743,6 @@ extension NotionAuthQuerySortBy
   QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByTestedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'testedAt', Sort.desc);
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByToken() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'token', Sort.asc);
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> sortByTokenDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'token', Sort.desc);
     });
   }
 }
@@ -961,18 +808,6 @@ extension NotionAuthQuerySortThenBy
       return query.addSortBy(r'testedAt', Sort.desc);
     });
   }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> thenByToken() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'token', Sort.asc);
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QAfterSortBy> thenByTokenDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'token', Sort.desc);
-    });
-  }
 }
 
 extension NotionAuthQueryWhereDistinct
@@ -1000,13 +835,6 @@ extension NotionAuthQueryWhereDistinct
   QueryBuilder<NotionAuth, NotionAuth, QDistinct> distinctByTestedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'testedAt');
-    });
-  }
-
-  QueryBuilder<NotionAuth, NotionAuth, QDistinct> distinctByToken(
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'token', caseSensitive: caseSensitive);
     });
   }
 }
@@ -1040,12 +868,6 @@ extension NotionAuthQueryProperty
   QueryBuilder<NotionAuth, DateTime?, QQueryOperations> testedAtProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'testedAt');
-    });
-  }
-
-  QueryBuilder<NotionAuth, String, QQueryOperations> tokenProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'token');
     });
   }
 }

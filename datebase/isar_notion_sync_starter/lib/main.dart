@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar_notion_sync_starter/data/local/isar_service.dart';
+import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
 import 'package:isar_notion_sync_starter/sync/notion_pull_service.dart';
 import 'package:isar_notion_sync_starter/sync/notion_retry_sync_handler.dart';
@@ -74,14 +75,15 @@ Future<void> ensureGlobalSchedulerStarted() async {
 }
 
 Future<void> _maybeAutoSync() async {
+  final token = await secureTokenStorage.getToken();
+  if (token == null || token.isEmpty) return;
+  
   final isar = isarService.isar;
   final auth = await isar.notionAuths.get(1);
   final now = DateTime.now();
   const interval = Duration(hours: 4);
   final last = auth?.lastSyncedAt;
-  final shouldSync = auth != null &&
-      auth.token.isNotEmpty &&
-      (last == null || now.difference(last) >= interval);
+  final shouldSync = last == null || now.difference(last) >= interval;
   if (!shouldSync) return;
   await NotionPullService(isar).pullAll();
 }

@@ -387,6 +387,9 @@ class SyncConfig {
    - 增强了 `HttpException` 类，包含状态码和响应头信息
    - 所有 API 方法现在都自动处理速率限制
 2. **实现 Token 安全存储** (使用 flutter_secure_storage)
+   - 当前 Token 存储在 SharedPreferences 中，存在安全风险
+   - 需要迁移到 flutter_secure_storage 进行加密存储
+   - 更新所有读取和写入 Token 的代码位置
 3. **修复 `runContinuous()` 无法停止的问题**
 4. **添加日志文件轮转机制**
 
