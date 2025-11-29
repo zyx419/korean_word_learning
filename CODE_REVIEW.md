@@ -381,7 +381,11 @@ class SyncConfig {
 ## 10. 待修复的关键问题清单
 
 ### 🔴 高优先级
-1. **添加 Notion API 速率限制处理** (429 错误)
+1. ✅ **添加 Notion API 速率限制处理** (429 错误) - *已修复*
+   - 实现了指数退避重试机制
+   - 支持从 `Retry-After` 响应头读取等待时间
+   - 增强了 `HttpException` 类，包含状态码和响应头信息
+   - 所有 API 方法现在都自动处理速率限制
 2. **实现 Token 安全存储** (使用 flutter_secure_storage)
 3. **修复 `runContinuous()` 无法停止的问题**
 4. **添加日志文件轮转机制**
