@@ -390,7 +390,12 @@ class SyncConfig {
    - 当前 Token 存储在 SharedPreferences 中，存在安全风险
    - 需要迁移到 flutter_secure_storage 进行加密存储
    - 更新所有读取和写入 Token 的代码位置
-3. **修复 `runContinuous()` 无法停止的问题**
+3. ✅ **修复 `runContinuous()` 无法停止的问题** - *已修复*
+   - 在 `SyncScheduler` 接口中添加了 `stop()` 方法
+   - 实现了优雅停止机制，使用 `Completer` 来跟踪停止状态
+   - 添加了配置常量（轮询间隔和批次大小）
+   - `stop()` 方法会等待当前循环完成，最多等待 5 秒
+   - 改进了 `runContinuous()` 的错误处理和日志记录
 4. **添加日志文件轮转机制**
 
 ### 🟡 中优先级

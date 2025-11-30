@@ -8,12 +8,16 @@ import 'package:isar_notion_sync_starter/utils/app_logger.dart';
 import 'sync_scheduler.dart';
 
 class SyncSchedulerImpl implements SyncScheduler {
+  static const Duration _pollInterval = Duration(milliseconds: 300);
+  static const int _batchSize = 10;
+
   SyncSchedulerImpl(this._isar, {SyncProgressNotifier? progressNotifier})
       : _progressNotifier = progressNotifier;
   final Isar _isar;
   final _handlers = <String, SyncHandler>{};
   bool _online = true;
   bool _running = false;
+  Completer<void>? _stopCompleter;
   final AppLogger _logger = AppLogger.instance;
   final SyncProgressNotifier? _progressNotifier;
 
@@ -67,7 +71,7 @@ class SyncSchedulerImpl implements SyncScheduler {
         .statusEqualTo('pending')
         .sortByPriorityDesc()
         .thenByUpdatedAt()
-        .limit(10)
+        .limit(_batchSize)
         .findAll();
     if (items.isEmpty) {
       _logger.debug('sync_run_no_pending');
@@ -131,11 +135,56 @@ class SyncSchedulerImpl implements SyncScheduler {
 
   @override
   Future<void> runContinuous() async {
-    if (_running) return;
+    if (_running) {
+      _logger.debug('sync_continuous_already_running');
+      return;
+    }
+
     _running = true;
-    while (_running) {
-      await runOnce();
-      await Future.delayed(const Duration(milliseconds: 300));
+    _stopCompleter = Completer<void>();
+
+    try {
+      _logger.debug('sync_continuous_started');
+      while (_running) {
+        await runOnce();
+        if (!_running) break;
+        
+        try {
+          await Future.delayed(_pollInterval);
+        } catch (e) {
+          // 如果在延迟期间被取消，这里可能会抛出异常
+          if (!_running) break;
+          rethrow;
+        }
+      }
+    } finally {
+      _running = false;
+      _logger.debug('sync_continuous_stopped');
+      if (!_stopCompleter!.isCompleted) {
+        _stopCompleter!.complete();
+      }
+      _stopCompleter = null;
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    if (!_running) {
+      _logger.debug('sync_stop_not_running');
+      return;
+    }
+
+    _logger.debug('sync_stop_requested');
+    _running = false;
+
+    // 等待当前的 runContinuous 循环完成
+    if (_stopCompleter != null && !_stopCompleter!.isCompleted) {
+      try {
+        await _stopCompleter!.future.timeout(const Duration(seconds: 5));
+      } catch (e) {
+        _logger.warn('sync_stop_timeout',
+            data: {'error': '等待同步停止超时，可能仍在处理中'});
+      }
     }
   }
 }

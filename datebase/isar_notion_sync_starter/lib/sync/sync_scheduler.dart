@@ -13,6 +13,7 @@ abstract class SyncScheduler {
 
   Future<void> runOnce();
   Future<void> runContinuous();
+  Future<void> stop();
   void onNetworkChange(bool online);
   void registerHandler(String entityType, SyncHandler handler);
 }
