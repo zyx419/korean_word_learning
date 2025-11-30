@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
+import 'package:isar_notion_sync_starter/data/adapters/notion_mappers.dart';
 import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
@@ -191,8 +192,20 @@ class NotionPullService {
           DateTime.fromMillisecondsSinceEpoch(0);
       return db.compareTo(da);
     });
-    final remote = ReadingPrefs.fromNotion(pages.first)
-      ..updatedAtLocal = DateTime.now();
+    Map<String, dynamic>? target;
+    for (final page in pages) {
+      final key = readTextProperty(
+              (page['properties'] as Map<String, dynamic>?)
+                  ?['ExternalKey'] as Map<String, dynamic>?) ??
+          '';
+      if (key == ReadingPrefs.defaultExternalKey) {
+        target = page;
+        break;
+      }
+    }
+    final remote =
+        ReadingPrefs.fromNotion(target ?? pages.first)..updatedAtLocal = DateTime.now();
+    remote.ensureExternalKey();
 
     await _isar.writeTxn(() async {
       final existing = await _isar.readingPrefs.get(1);
@@ -205,10 +218,17 @@ class NotionPullService {
         localUpdated: existing.updatedAtLocal,
       )) {
         existing
+          ..notionPageId = remote.notionPageId ?? existing.notionPageId
+          ..externalKey = remote.externalKey
           ..theme = remote.theme
           ..fontSize = remote.fontSize
           ..lineHeight = remote.lineHeight
           ..paragraphSpacing = remote.paragraphSpacing
+          ..filterState = remote.filterState
+          ..scrollOffsetAll = remote.scrollOffsetAll
+          ..scrollOffsetFamiliar = remote.scrollOffsetFamiliar
+          ..scrollOffsetUnfamiliar = remote.scrollOffsetUnfamiliar
+          ..scrollOffsetNeutral = remote.scrollOffsetNeutral
           ..updatedAtRemote = remote.updatedAtRemote
           ..updatedAtLocal = DateTime.now();
         await _isar.readingPrefs.put(existing);
@@ -216,6 +236,10 @@ class NotionPullService {
             'Updated reading prefs theme=${remote.theme} fontSize=${remote.fontSize}');
       } else {
         _logger.debug('Skipped reading prefs (local copy is newer)');
+        if (existing.externalKey.isEmpty) {
+          existing.externalKey = ReadingPrefs.defaultExternalKey;
+          await _isar.readingPrefs.put(existing);
+        }
       }
     });
   }

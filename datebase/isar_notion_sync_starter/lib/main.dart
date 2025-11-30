@@ -69,7 +69,8 @@ Future<void> ensureGlobalSchedulerStarted() async {
   final retryHandler = NotionRetrySyncHandler(isarService.isar);
   scheduler
     ..registerHandler('highlight', retryHandler)
-    ..registerHandler('sentence', retryHandler);
+    ..registerHandler('sentence', retryHandler)
+    ..registerHandler('prefs', retryHandler);
   scheduler.runContinuous();
   globalSyncScheduler = scheduler;
 }

@@ -10,6 +10,21 @@ Param(
 
 $ErrorActionPreference = 'Stop'
 
+$shouldLaunch = $LaunchEmulator
+if ($LaunchEmulator) {
+  try {
+    # If any emulator device is already online, skip launching a new one.
+    $adbOutput = & adb devices
+    $running = $adbOutput -split "`n" | Where-Object { $_ -match '^emulator-\d+\s+device' }
+    if ($running.Count -gt 0) {
+      Write-Host "检测到已有 Android 模拟器在运行，跳过启动。" -ForegroundColor Yellow
+      $shouldLaunch = $false
+    }
+  } catch {
+    Write-Warning "检查模拟器状态时出错：$_"
+  }
+}
+
 $baseScript = Join-Path $PSScriptRoot "run_dev.local.ps1"
 if (-not (Test-Path -LiteralPath $baseScript)) {
   throw "找不到基础启动脚本：$baseScript"
@@ -22,9 +37,8 @@ $scriptParams = @{
   DbHighlights = $DbHighlights
   DbPrefs = $DbPrefs
   LogFile = $LogFile
-  LaunchEmulator = $LaunchEmulator
+  LaunchEmulator = $shouldLaunch
   EmulatorId = "Pixel_Tablet_API_34"
 }
 
 & $baseScript @scriptParams
-

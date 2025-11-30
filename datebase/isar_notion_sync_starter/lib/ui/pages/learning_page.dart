@@ -42,7 +42,6 @@ class _LearningPageState extends State<LearningPage> {
   late final ScrollController _scrollController;
   bool _scrollRestored = false;
   double _lastScrollOffset = 0;
-  static const Duration _notionThrottleDelay = Duration(milliseconds: 400);
 
   @override
   void initState() {
@@ -67,8 +66,10 @@ class _LearningPageState extends State<LearningPage> {
         await isar.readingPrefs.put(prefs!);
       });
     }
+    prefs.ensureExternalKey();
     _prefs = prefs;
-    _lastScrollOffset = prefs.scrollOffset;
+    _filterState = prefs.filterState;
+    _lastScrollOffset = _getOffsetForFilter(_prefs, _filterState);
 
     _sentenceSub = isar.sentences
         .where()
@@ -148,6 +149,19 @@ class _LearningPageState extends State<LearningPage> {
                   _bulkSelectMode ? Icons.close : Icons.check_box_outlined),
               onPressed: _toggleBulkSelectMode,
             ),
+            if (_filterState != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Center(
+                  child: Text(
+                    _filterLabel(_filterState),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
             if (_bulkSelectMode)
               IconButton(
                 tooltip: allVisibleSelected ? '取消全选' : '全选当前列表',
@@ -163,12 +177,17 @@ class _LearningPageState extends State<LearningPage> {
                     ? null
                     : Theme.of(context).colorScheme.primary,
               ),
-              onSelected: (value) => setState(() => _filterState = value),
+              onSelected: _onFilterChanged,
               itemBuilder: (context) => [
-                const PopupMenuItem(value: null, child: Text('全部熟练度')),
+                CheckedPopupMenuItem(
+                  value: null,
+                  checked: _filterState == null,
+                  child: const Text('全部熟练度'),
+                ),
                 ...FamiliarState.values.map(
-                  (state) => PopupMenuItem(
+                  (state) => CheckedPopupMenuItem(
                     value: state,
+                    checked: _filterState == state,
                     child: Text(state.name),
                   ),
                 ),
@@ -344,6 +363,19 @@ class _LearningPageState extends State<LearningPage> {
     final sorted = List<Sentence>.from(source);
     sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return sorted;
+  }
+
+  String _filterLabel(FamiliarState? state) {
+    switch (state) {
+      case FamiliarState.familiar:
+        return '熟练';
+      case FamiliarState.unfamiliar:
+        return '不熟';
+      case FamiliarState.neutral:
+        return '一般';
+      default:
+        return '全部';
+    }
   }
 
   List<Sentence> _filterSentences(List<Sentence> source) {
@@ -548,6 +580,7 @@ class _LearningPageState extends State<LearningPage> {
     final controller = TextEditingController(text: highlight.note ?? '');
     String selectedColor = highlight.color;
     final copyableText = await _resolveHighlightText(highlight);
+    if (!mounted) return;
     final result = await showModalBottomSheet<_HighlightEditResult>(
       context: context,
       showDragHandle: true,
@@ -707,23 +740,98 @@ class _LearningPageState extends State<LearningPage> {
     }
   }
 
-  Future<void> _pushSentenceDeletion(Sentence sentence) async {
-    final service = _pushService;
-    if (service == null) return;
-    final result = await service.deleteSentence(sentence);
-    if (!result.ok && result.message != null) {
-      _showSyncError(result.message!);
-    }
-  }
-
   void _showSyncError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  double _getOffsetForFilter(ReadingPrefs prefs, FamiliarState? filter) {
+    double value() {
+      switch (filter) {
+        case FamiliarState.familiar:
+          return prefs.scrollOffsetFamiliar;
+        case FamiliarState.unfamiliar:
+          return prefs.scrollOffsetUnfamiliar;
+        case FamiliarState.neutral:
+          return prefs.scrollOffsetNeutral;
+        default:
+          return prefs.scrollOffsetAll;
+      }
+    }
+
+    final v = value();
+    return v.isFinite ? v : 0;
+  }
+
+  void _setOffsetForFilter(
+      ReadingPrefs prefs, FamiliarState? filter, double offset) {
+    if (!offset.isFinite || offset < 0) {
+      offset = 0.0;
+    }
+    final clamped = offset;
+    switch (filter) {
+      case FamiliarState.familiar:
+        prefs.scrollOffsetFamiliar = clamped;
+        break;
+      case FamiliarState.unfamiliar:
+        prefs.scrollOffsetUnfamiliar = clamped;
+        break;
+      case FamiliarState.neutral:
+        prefs.scrollOffsetNeutral = clamped;
+        break;
+      default:
+        prefs.scrollOffsetAll = clamped;
+        break;
+    }
+  }
+
+  Future<void> _onFilterChanged(FamiliarState? state) async {
+    final currentOffset =
+        _scrollController.hasClients ? _scrollController.offset : _lastScrollOffset;
+    _setOffsetForFilter(_prefs, _filterState, currentOffset);
+    setState(() {
+      _filterState = state;
+      _prefs.filterState = state;
+      _lastScrollOffset = _getOffsetForFilter(_prefs, state);
+      _scrollRestored = false;
+    });
+    await _persistPrefs();
+    _maybeRestoreScroll();
+  }
+
+  Future<void> _persistPrefs() async {
+    final isar = _isar;
+    if (isar == null) return;
+    _prefs
+      ..ensureExternalKey()
+      ..updatedAtLocal = DateTime.now();
+    await isar.writeTxn(() async {
+      await isar.readingPrefs.put(_prefs);
+    });
+    await _enqueuePrefsSync();
+  }
+
+  Future<void> _enqueuePrefsSync() async {
+    final scheduler = _scheduler;
+    if (scheduler == null) return;
+    await scheduler.enqueue(
+      entityType: 'prefs',
+      op: _prefs.notionPageId == null ? 'create' : 'update',
+      entityLocalKey: _prefs.externalKey,
+      remoteId: _prefs.notionPageId,
+      payload: {
+        'externalKey': _prefs.externalKey,
+      },
+      status: 'pending',
+    );
+    unawaited(scheduler.runOnce());
+  }
+
   void _onScrollChanged() {
-    _lastScrollOffset = _scrollController.offset;
+    final offset = _scrollController.offset;
+    _lastScrollOffset = offset;
+    _setOffsetForFilter(_prefs, _filterState, offset);
   }
 
   void _toggleBulkSelectMode() {
@@ -992,18 +1100,6 @@ class _LearningPageState extends State<LearningPage> {
     });
   }
 
-  Future<void> _setSentenceStatus(int id, SyncStatus status) async {
-    final isar = _isar;
-    if (isar == null) return;
-    await isar.writeTxn(() async {
-      final local = await isar.sentences.get(id);
-      if (local == null) return;
-      local.syncStatus = status;
-      local.updatedAtLocal = DateTime.now();
-      await isar.sentences.put(local);
-    });
-  }
-
   Sentence? _parseStructuredSentenceLine(
       String line, FamiliarState defaultState) {
     final fields = _splitCsvLine(line);
@@ -1108,7 +1204,9 @@ class _LearningPageState extends State<LearningPage> {
       return;
     }
     final max = _scrollController.position.maxScrollExtent;
-    final target = _prefs.scrollOffset.clamp(0, max).toDouble();
+    final offset = _getOffsetForFilter(_prefs, _filterState);
+    final target = offset.clamp(0, max).toDouble();
+    _lastScrollOffset = target;
     _scrollController.jumpTo(target);
     _scrollRestored = true;
   }
@@ -1116,10 +1214,8 @@ class _LearningPageState extends State<LearningPage> {
   Future<void> _persistScrollOffset() async {
     final isar = _isar;
     if (isar == null) return;
-    _prefs.scrollOffset = _lastScrollOffset;
-    await isar.writeTxn(() async {
-      await isar.readingPrefs.put(_prefs);
-    });
+    _setOffsetForFilter(_prefs, _filterState, _lastScrollOffset);
+    await _persistPrefs();
   }
 
   Future<bool> _handleSwipeFamiliar(Sentence sentence) async {
@@ -1231,11 +1327,19 @@ class _LearningPageState extends State<LearningPage> {
   Future<void> _updatePrefs(ReadingPrefs prefs) async {
     final isar = _isar;
     if (isar == null) return;
-    prefs.scrollOffset = _lastScrollOffset;
-    await isar.writeTxn(() async {
-      await isar.readingPrefs.put(prefs);
-    });
+    _setOffsetForFilter(prefs, _filterState, _lastScrollOffset);
+    prefs.ensureExternalKey();
+    prefs
+      ..filterState = _filterState
+      ..scrollOffsetAll = _prefs.scrollOffsetAll
+      ..scrollOffsetFamiliar = _prefs.scrollOffsetFamiliar
+      ..scrollOffsetUnfamiliar = _prefs.scrollOffsetUnfamiliar
+      ..scrollOffsetNeutral = _prefs.scrollOffsetNeutral
+      ..notionPageId = _prefs.notionPageId
+      ..externalKey = _prefs.externalKey
+      ..updatedAtLocal = DateTime.now();
     setState(() => _prefs = prefs);
+    await _persistPrefs();
   }
 }
 
@@ -1416,35 +1520,6 @@ class _SentenceBlockState extends State<_SentenceBlock> {
   }
 }
 
-class _FamiliarPickerSheet extends StatelessWidget {
-  const _FamiliarPickerSheet({required this.initial});
-  final FamiliarState initial;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child:
-                Text('选择熟练度', style: Theme.of(context).textTheme.titleMedium),
-          ),
-          for (final state in FamiliarState.values)
-            RadioListTile<FamiliarState>(
-              value: state,
-              groupValue: initial,
-              onChanged: (value) => Navigator.pop(context, value),
-              title: Text(state.name),
-            ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}
-
 class _ColorDot extends StatelessWidget {
   const _ColorDot(
       {required this.label, required this.color, required this.onTap});
@@ -1512,6 +1587,13 @@ class _ReadingStylePanelState extends State<ReadingStylePanel> {
   ReadingPrefs _clone(ReadingPrefs source) {
     return ReadingPrefs()
       ..id = source.id
+      ..notionPageId = source.notionPageId
+      ..externalKey = source.externalKey
+      ..filterState = source.filterState
+      ..scrollOffsetAll = source.scrollOffsetAll
+      ..scrollOffsetFamiliar = source.scrollOffsetFamiliar
+      ..scrollOffsetUnfamiliar = source.scrollOffsetUnfamiliar
+      ..scrollOffsetNeutral = source.scrollOffsetNeutral
       ..theme = source.theme
       ..fontSize = source.fontSize
       ..lineHeight = source.lineHeight

@@ -5,6 +5,7 @@ import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_binding.dart';
+import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
 import 'package:isar_notion_sync_starter/data/models/sync_queue_item.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/data/remote/notion_api.dart';
@@ -224,6 +225,131 @@ class NotionPushService {
     }
   }
 
+  Future<NotionPushResult> upsertPrefs(ReadingPrefs prefs) async {
+    final ctx = await _loadContext();
+    if (ctx == null) {
+      return const NotionPushResult.error('未配置 Notion token，无法同步偏好设置。');
+    }
+    final dbId = ctx.prefsDbId;
+    if (dbId == null || dbId.isEmpty) {
+      return const NotionPushResult.error('未绑定偏好数据库，无法同步。');
+    }
+    prefs
+      ..ensureExternalKey()
+      ..updatedAtLocal = DateTime.now();
+    final isCreate = prefs.notionPageId == null;
+
+    var legacyThemeAsTitle = true;
+    final excludedProps = <String>{'offsets'};
+
+    Future<Map<String, dynamic>> buildPayload() async {
+      final payload = prefs.toNotion(
+        legacyThemeAsTitle: legacyThemeAsTitle,
+        includeOffsets: !excludedProps.contains('offsets'),
+        includeExternalKey: true,
+      );
+      final props = (payload['properties'] as Map<String, dynamic>?);
+      if (props != null) {
+        for (final name in excludedProps.where((e) => e != 'offsets')) {
+          props.remove(name);
+        }
+      }
+      return payload;
+    }
+
+    Future<NotionPushResult> pushOnce() async {
+      final payload = await buildPayload();
+      final resp = isCreate
+          ? await ctx.api.createPage(dbId, payload)
+          : await ctx.api.updatePage(prefs.notionPageId!, payload);
+      final remoteId = resp['id'] as String? ?? prefs.notionPageId;
+      final remoteEditedAt = DateTime.tryParse(resp['last_edited_time'] ?? '');
+      await _isar.writeTxn(() async {
+        final local = await _isar.readingPrefs.get(prefs.id);
+        if (local == null) return;
+        local
+          ..notionPageId = remoteId ?? local.notionPageId
+          ..externalKey = prefs.externalKey
+          ..theme = prefs.theme
+          ..fontSize = prefs.fontSize
+          ..lineHeight = prefs.lineHeight
+          ..paragraphSpacing = prefs.paragraphSpacing
+          ..filterState = prefs.filterState
+          ..scrollOffsetAll = prefs.scrollOffsetAll
+          ..scrollOffsetFamiliar = prefs.scrollOffsetFamiliar
+          ..scrollOffsetUnfamiliar = prefs.scrollOffsetUnfamiliar
+          ..scrollOffsetNeutral = prefs.scrollOffsetNeutral
+          ..updatedAtRemote = remoteEditedAt;
+        await _isar.readingPrefs.put(local);
+      });
+      _logger.info('Pushed reading prefs to Notion',
+          data: {'op': isCreate ? 'create' : 'update', 'remoteId': remoteId});
+      return const NotionPushResult.success();
+    }
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await pushOnce();
+      } on HttpException catch (e, st) {
+        final msg = e.message;
+        if (msg.contains('is expected to be title')) {
+          legacyThemeAsTitle = true;
+          _logger.warn('Prefs sync fallback: Theme as title', data: {'error': '$e'});
+          continue;
+        }
+        final missing = _extractMissingProperty(msg);
+        if (missing != null) {
+          excludedProps.add(missing);
+          if (missing.startsWith('ScrollOffset')) {
+            excludedProps.add('offsets');
+          }
+          _logger.warn('Prefs sync fallback: drop property $missing',
+              data: {'error': '$e'});
+          continue;
+        }
+        _logger.error('Failed to push reading prefs', error: e, stackTrace: st);
+        await _enqueueFailure(
+          entityType: 'prefs',
+          op: isCreate ? 'create' : 'update',
+          localKey: prefs.externalKey,
+          remoteId: prefs.notionPageId,
+          payload: {'externalKey': prefs.externalKey},
+          error: e,
+          status: 'failed',
+          errorCode: e.code,
+          errorMessage: msg,
+        );
+        return NotionPushResult.error('同步阅读偏好到 Notion 失败：$msg');
+      } catch (e, st) {
+        _logger.error('Failed to push reading prefs', error: e, stackTrace: st);
+        await _enqueueFailure(
+          entityType: 'prefs',
+          op: isCreate ? 'create' : 'update',
+          localKey: prefs.externalKey,
+          remoteId: prefs.notionPageId,
+          payload: {'externalKey': prefs.externalKey},
+          error: e,
+          status: 'failed',
+          errorCode: 'PUSH',
+          errorMessage: '$e',
+        );
+        return NotionPushResult.error('同步阅读偏好到 Notion 失败：$e');
+      }
+    }
+
+    return const NotionPushResult.error('同步阅读偏好到 Notion 失败：字段不匹配');
+  }
+
+  String? _extractMissingProperty(String message) {
+    const marker = ' is not a property that exists';
+    final idx = message.indexOf(marker);
+    if (idx <= 0) return null;
+    final prefix = message.substring(0, idx).trim();
+    final parts = prefix.split(' ');
+    if (parts.isEmpty) return null;
+    return parts.last.replaceAll('"', '');
+  }
+
   Future<void> _markSentenceStatus(int id, SyncStatus status) async {
     try {
       await _isar.writeTxn(() async {
@@ -241,13 +367,15 @@ class NotionPushService {
   Future<_NotionContext?> _loadContext() async {
     final token = await secureTokenStorage.getToken();
     if (token == null || token.isEmpty) return null;
-    final bindings = await _isar.notionDatabaseBindings.getAll([1, 2]);
+    final bindings = await _isar.notionDatabaseBindings.getAll([1, 2, 3]);
     final sentencesDb = bindings.isNotEmpty ? bindings[0] : null;
     final highlightDb = bindings.length > 1 ? bindings[1] : null;
+    final prefsDb = bindings.length > 2 ? bindings[2] : null;
     return _NotionContext(
       api: NotionApi(token),
       sentencesDbId: _normalizeDbId(sentencesDb?.databaseId),
       highlightsDbId: _normalizeDbId(highlightDb?.databaseId),
+      prefsDbId: _normalizeDbId(prefsDb?.databaseId),
     );
   }
 
@@ -326,10 +454,12 @@ class _NotionContext {
     required this.api,
     this.sentencesDbId,
     this.highlightsDbId,
+    this.prefsDbId,
   });
   final NotionApi api;
   final String? sentencesDbId;
   final String? highlightsDbId;
+  final String? prefsDbId;
 }
 
 class NotionPushResult {

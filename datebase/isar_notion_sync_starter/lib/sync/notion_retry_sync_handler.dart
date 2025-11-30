@@ -1,16 +1,15 @@
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
+import 'package:isar_notion_sync_starter/data/models/reading_prefs.dart';
 import 'package:isar_notion_sync_starter/data/models/sentence.dart';
 import 'package:isar_notion_sync_starter/sync/notion_push_service.dart';
 import 'package:isar_notion_sync_starter/sync/sync_scheduler.dart';
-import 'package:isar_notion_sync_starter/utils/app_logger.dart';
 
 class NotionRetrySyncHandler implements SyncHandler {
   NotionRetrySyncHandler(this._isar);
 
   final Isar _isar;
   late final NotionPushService _push = NotionPushService(_isar);
-  final AppLogger _logger = AppLogger.instance;
 
   @override
   Future<SyncResult> handle(SyncJob job) async {
@@ -19,6 +18,8 @@ class NotionRetrySyncHandler implements SyncHandler {
         return _handleHighlight(job, int.tryParse(job.entityLocalKey));
       case 'sentence':
         return _handleSentence(job, job.entityLocalKey);
+      case 'prefs':
+        return _handlePrefs(job);
       default:
         return SyncResult.err('UNSUPPORTED', '未知类型 ${job.entityType}');
     }
@@ -35,6 +36,19 @@ class NotionRetrySyncHandler implements SyncHandler {
     final res = job.op == 'delete'
         ? await _push.deleteHighlight(highlight)
         : await _push.upsertHighlight(highlight);
+    return _mapResult(res);
+  }
+
+  Future<SyncResult> _handlePrefs(SyncJob job) async {
+    final prefs = await _isar.readingPrefs
+            .filter()
+            .externalKeyEqualTo(job.entityLocalKey, caseSensitive: false)
+            .findFirst() ??
+        await _isar.readingPrefs.get(1);
+    if (prefs == null) {
+      return const SyncResult.err('NOT_FOUND', '本地找不到偏好设置');
+    }
+    final res = await _push.upsertPrefs(prefs);
     return _mapResult(res);
   }
 
