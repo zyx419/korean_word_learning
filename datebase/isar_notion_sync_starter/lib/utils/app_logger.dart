@@ -5,6 +5,10 @@ import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Simple logger that mirrors messages to console and to a persistent log file.
+/// 
+/// Features:
+/// - Logs to both console and file
+/// - Automatic log file rotation when size exceeds limit
 class AppLogger {
   AppLogger._internal() {
     _logger = Logger(
@@ -22,8 +26,12 @@ class AppLogger {
 
   static final AppLogger instance = AppLogger._internal();
 
+  /// Maximum log file size before rotation (10MB)
+  static const int _maxLogFileSizeBytes = 10 * 1024 * 1024;
+
   late final Logger _logger;
   final Completer<File> _logFileCompleter = Completer<File>();
+  Future<void> _writeLock = Future<void>.value();
 
   /// Public logging helpers
   void debug(String message, {Object? data}) =>
@@ -53,6 +61,35 @@ class AppLogger {
     }
   }
 
+  /// Rotates the log file if it exceeds the maximum size.
+  /// 
+  /// The current log file is renamed to `.1` suffix, and a new log file is created.
+  Future<void> _rotateLogIfNeeded(File file) async {
+    try {
+      final length = await file.length();
+      if (length < _maxLogFileSizeBytes) {
+        return;
+      }
+
+      final rotatedPath = '${file.path}.1';
+      final rotatedFile = File(rotatedPath);
+      
+      // Delete old rotated file if it exists
+      if (await rotatedFile.exists()) {
+        await rotatedFile.delete();
+      }
+      
+      // Rename current log file to rotated file
+      await file.rename(rotatedPath);
+      
+      // Create new log file
+      await file.create();
+    } catch (e) {
+      // Swallow rotation errors to keep app running
+      // Log rotation failure should not break the application
+    }
+  }
+
   void _log(Level level, String message,
       {StackTrace? stackTrace, Object? data}) {
     if (data != null) {
@@ -62,11 +99,28 @@ class AppLogger {
     }
 
     _logFile.then((file) async {
-      final timestamp = DateTime.now().toIso8601String();
-      final line = '[$timestamp] [${level.name}] $message'
-          '${data == null ? '' : ' | data=$data'}'
-          '${stackTrace == null ? '' : '\n$stackTrace'}\n';
-      await file.writeAsString(line, mode: FileMode.append, flush: true);
+      // Wait for any ongoing write to complete
+      await _writeLock;
+      
+      // Create a new lock for this write operation
+      final lockCompleter = Completer<void>();
+      _writeLock = lockCompleter.future;
+      
+      try {
+        // Check and rotate log file if needed
+        await _rotateLogIfNeeded(file);
+        
+        final timestamp = DateTime.now().toIso8601String();
+        final line = '[$timestamp] [${level.name}] $message'
+            '${data == null ? '' : ' | data=$data'}'
+            '${stackTrace == null ? '' : '\n$stackTrace'}\n';
+        await file.writeAsString(line, mode: FileMode.append, flush: true);
+      } catch (_) {
+        // Swallow errors writing to log file to keep app running.
+      } finally {
+        // Release the lock
+        lockCompleter.complete();
+      }
     }).catchError((_) {
       // Swallow errors writing to log file to keep app running.
     });
