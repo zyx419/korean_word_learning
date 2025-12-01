@@ -239,8 +239,9 @@ class NotionPushService {
       ..updatedAtLocal = DateTime.now();
     final isCreate = prefs.notionPageId == null;
 
-    var legacyThemeAsTitle = true;
-    final excludedProps = <String>{'offsets'};
+    var legacyThemeAsTitle = false;
+    final excludedProps = <String>{};
+    var unarchiveAttempted = false;
 
     Future<Map<String, dynamic>> buildPayload() async {
       final payload = prefs.toNotion(
@@ -292,6 +293,20 @@ class NotionPushService {
         return await pushOnce();
       } on HttpException catch (e, st) {
         final msg = e.message;
+        if (msg.contains('archived') &&
+            prefs.notionPageId != null &&
+            !unarchiveAttempted) {
+          unarchiveAttempted = true;
+          _logger.warn('Prefs page archived, unarchiving then retry',
+              data: {'pageId': prefs.notionPageId});
+          try {
+            await ctx.api
+                .updatePage(prefs.notionPageId!, {'archived': false});
+          } catch (_) {
+            // best-effort
+          }
+          continue;
+        }
         if (msg.contains('is expected to be title')) {
           legacyThemeAsTitle = true;
           _logger.warn('Prefs sync fallback: Theme as title', data: {'error': '$e'});

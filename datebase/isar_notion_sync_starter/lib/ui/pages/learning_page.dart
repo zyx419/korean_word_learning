@@ -42,6 +42,7 @@ class _LearningPageState extends State<LearningPage> {
   late final ScrollController _scrollController;
   bool _scrollRestored = false;
   double _lastScrollOffset = 0;
+  DateTime? _lastPrefsPersistedAt;
 
   @override
   void initState() {
@@ -832,6 +833,12 @@ class _LearningPageState extends State<LearningPage> {
     final offset = _scrollController.offset;
     _lastScrollOffset = offset;
     _setOffsetForFilter(_prefs, _filterState, offset);
+    final now = DateTime.now();
+    if (_lastPrefsPersistedAt == null ||
+        now.difference(_lastPrefsPersistedAt!) >= const Duration(seconds: 2)) {
+      _lastPrefsPersistedAt = now;
+      unawaited(_persistPrefs());
+    }
   }
 
   void _toggleBulkSelectMode() {

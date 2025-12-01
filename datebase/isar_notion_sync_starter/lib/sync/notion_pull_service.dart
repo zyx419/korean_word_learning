@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
-import 'package:isar_notion_sync_starter/data/adapters/notion_mappers.dart';
 import 'package:isar_notion_sync_starter/data/local/secure_token_storage.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
 import 'package:isar_notion_sync_starter/data/models/notion_auth.dart';
@@ -192,48 +191,53 @@ class NotionPullService {
           DateTime.fromMillisecondsSinceEpoch(0);
       return db.compareTo(da);
     });
-    Map<String, dynamic>? target;
-    for (final page in pages) {
-      final key = readTextProperty(
-              (page['properties'] as Map<String, dynamic>?)
-                  ?['ExternalKey'] as Map<String, dynamic>?) ??
-          '';
-      if (key == ReadingPrefs.defaultExternalKey) {
-        target = page;
-        break;
-      }
+    final candidates = pages
+        .map((e) => ReadingPrefs.fromNotion(e)..ensureExternalKey())
+        .toList();
+
+    // Prefer explicit external key match; otherwise merge all by newest remote edit time.
+    final keyMatches = candidates
+        .where((p) => p.externalKey == ReadingPrefs.defaultExternalKey)
+        .toList();
+    candidates.sort((a, b) {
+      final da = a.updatedAtRemote ?? a.updatedAtLocal;
+      final db = b.updatedAtRemote ?? b.updatedAtLocal;
+      return (db).compareTo(da);
+    });
+
+    final merged = (keyMatches.isNotEmpty ? keyMatches : candidates).first;
+    for (final c in candidates.skip(1)) {
+      merged.mergeWith(c);
     }
-    final remote =
-        ReadingPrefs.fromNotion(target ?? pages.first)..updatedAtLocal = DateTime.now();
-    remote.ensureExternalKey();
+    merged.updatedAtLocal = DateTime.now();
 
     await _isar.writeTxn(() async {
       final existing = await _isar.readingPrefs.get(1);
       if (existing == null) {
-        await _isar.readingPrefs.put(remote);
+        await _isar.readingPrefs.put(merged);
         _logger.info(
-            'Inserted reading prefs theme=${remote.theme} fontSize=${remote.fontSize}');
+            'Inserted reading prefs theme=${merged.theme} fontSize=${merged.fontSize}');
       } else if (_remoteWins(
-        remoteUpdated: remote.updatedAtRemote,
+        remoteUpdated: merged.updatedAtRemote,
         localUpdated: existing.updatedAtLocal,
       )) {
         existing
-          ..notionPageId = remote.notionPageId ?? existing.notionPageId
-          ..externalKey = remote.externalKey
-          ..theme = remote.theme
-          ..fontSize = remote.fontSize
-          ..lineHeight = remote.lineHeight
-          ..paragraphSpacing = remote.paragraphSpacing
-          ..filterState = remote.filterState
-          ..scrollOffsetAll = remote.scrollOffsetAll
-          ..scrollOffsetFamiliar = remote.scrollOffsetFamiliar
-          ..scrollOffsetUnfamiliar = remote.scrollOffsetUnfamiliar
-          ..scrollOffsetNeutral = remote.scrollOffsetNeutral
-          ..updatedAtRemote = remote.updatedAtRemote
+          ..notionPageId = merged.notionPageId ?? existing.notionPageId
+          ..externalKey = merged.externalKey
+          ..theme = merged.theme
+          ..fontSize = merged.fontSize
+          ..lineHeight = merged.lineHeight
+          ..paragraphSpacing = merged.paragraphSpacing
+          ..filterState = merged.filterState
+          ..scrollOffsetAll = merged.scrollOffsetAll
+          ..scrollOffsetFamiliar = merged.scrollOffsetFamiliar
+          ..scrollOffsetUnfamiliar = merged.scrollOffsetUnfamiliar
+          ..scrollOffsetNeutral = merged.scrollOffsetNeutral
+          ..updatedAtRemote = merged.updatedAtRemote
           ..updatedAtLocal = DateTime.now();
         await _isar.readingPrefs.put(existing);
         _logger.info(
-            'Updated reading prefs theme=${remote.theme} fontSize=${remote.fontSize}');
+            'Updated reading prefs theme=${merged.theme} fontSize=${merged.fontSize}');
       } else {
         _logger.debug('Skipped reading prefs (local copy is newer)');
         if (existing.externalKey.isEmpty) {

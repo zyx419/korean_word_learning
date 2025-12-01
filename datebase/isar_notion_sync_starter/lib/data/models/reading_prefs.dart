@@ -136,4 +136,27 @@ class ReadingPrefs {
     p.updatedAtRemote = DateTime.tryParse(page['last_edited_time'] ?? '');
     return p;
   }
+
+  /// Merge another prefs into this one preferring non-null/finite values in `other`.
+  void mergeWith(ReadingPrefs other) {
+    theme = other.theme;
+    fontSize = other.fontSize;
+    lineHeight = other.lineHeight;
+    paragraphSpacing = other.paragraphSpacing;
+    filterState = other.filterState ?? filterState;
+    if (other.scrollOffsetAll.isFinite) scrollOffsetAll = other.scrollOffsetAll;
+    if (other.scrollOffsetFamiliar.isFinite) {
+      scrollOffsetFamiliar = other.scrollOffsetFamiliar;
+    }
+    if (other.scrollOffsetUnfamiliar.isFinite) {
+      scrollOffsetUnfamiliar = other.scrollOffsetUnfamiliar;
+    }
+    if (other.scrollOffsetNeutral.isFinite) {
+      scrollOffsetNeutral = other.scrollOffsetNeutral;
+    }
+    notionPageId ??= other.notionPageId;
+    externalKey = other.externalKey.isEmpty ? externalKey : other.externalKey;
+    updatedAtLocal = DateTime.now();
+    updatedAtRemote = other.updatedAtRemote ?? updatedAtRemote;
+  }
 }
