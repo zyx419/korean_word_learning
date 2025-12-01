@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:isar_notion_sync_starter/data/models/highlight.dart';
@@ -43,6 +44,10 @@ class _LearningPageState extends State<LearningPage> {
   bool _scrollRestored = false;
   double _lastScrollOffset = 0;
   DateTime? _lastPrefsPersistedAt;
+  final GlobalKey _sliverListKey = GlobalKey();
+  int _progressIndex = 0;
+  int _progressTotal = 0;
+  bool _progressUpdateScheduled = false;
 
   @override
   void initState() {
@@ -84,6 +89,7 @@ class _LearningPageState extends State<LearningPage> {
         _loading = false;
       });
       _maybeRestoreScroll();
+      _scheduleProgressUpdate();
     });
 
     _highlightSub = isar.highlights
@@ -272,89 +278,106 @@ class _LearningPageState extends State<LearningPage> {
     final isTabletWidth = screenWidth >= 900;
     final swipeThreshold = isTabletWidth ? 0.15 : 0.25;
     final items = _filterSentences(_sentences);
+    if (items.isNotEmpty) {
+      _scheduleProgressUpdate();
+    }
     final Widget content;
     if (items.isEmpty) {
       content = const _EmptyState();
     } else {
-      content = ListView.separated(
+      final paragraphSpacing = _prefs.paragraphSpacing.toDouble();
+      content = CustomScrollView(
         controller: _scrollController,
-        padding: EdgeInsets.symmetric(
-          horizontal: isWideLayout ? 24 : 16,
-          vertical: 16,
-        ),
-        itemCount: items.length,
-        separatorBuilder: (_, __) =>
-            SizedBox(height: _prefs.paragraphSpacing.toDouble()),
-        itemBuilder: (context, index) {
-          final sentence = items[index];
-          final highlights = _highlightMap[sentence.id] ?? const [];
-          return Dismissible(
-            key: ValueKey(sentence.id),
-            dragStartBehavior: DragStartBehavior.down,
-            dismissThresholds: {
-              DismissDirection.startToEnd: swipeThreshold,
-              DismissDirection.endToStart: swipeThreshold,
-            },
-            direction: _bulkSelectMode
-                ? DismissDirection.none
-                : DismissDirection.horizontal,
-            confirmDismiss: (direction) {
-              if (_bulkSelectMode) return Future.value(false);
-              if (direction == DismissDirection.endToStart) {
-                return _handleSwipeFamiliar(sentence);
-              } else if (direction == DismissDirection.startToEnd) {
-                return _confirmSwipeDelete(sentence);
-              }
-              return Future.value(false);
-            },
-            background: Container(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              color: Colors.red.withValues(alpha: 0.2),
-              child: const Row(
-                children: [
-                  Icon(Icons.delete_outline, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('删除句子'),
-                ],
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isWideLayout ? 24 : 16,
+              vertical: 16,
+            ),
+            sliver: SliverList(
+              key: _sliverListKey,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final sentence = items[index];
+                  final highlights = _highlightMap[sentence.id] ?? const [];
+                  final isLast = index == items.length - 1;
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : paragraphSpacing),
+                    child: Dismissible(
+                      key: ValueKey(sentence.id),
+                      dragStartBehavior: DragStartBehavior.down,
+                      dismissThresholds: {
+                        DismissDirection.startToEnd: swipeThreshold,
+                        DismissDirection.endToStart: swipeThreshold,
+                      },
+                      direction: _bulkSelectMode
+                          ? DismissDirection.none
+                          : DismissDirection.horizontal,
+                      confirmDismiss: (direction) {
+                        if (_bulkSelectMode) return Future.value(false);
+                        if (direction == DismissDirection.endToStart) {
+                          return _handleSwipeFamiliar(sentence);
+                        } else if (direction == DismissDirection.startToEnd) {
+                          return _confirmSwipeDelete(sentence);
+                        }
+                        return Future.value(false);
+                      },
+                      background: Container(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        color: Colors.red.withValues(alpha: 0.2),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.delete_outline, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('删除句子'),
+                          ],
+                        ),
+                      ),
+                      secondaryBackground: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text('提升熟练度'),
+                            SizedBox(width: 8),
+                            Icon(Icons.trending_up),
+                          ],
+                        ),
+                      ),
+                      child: _SentenceBlock(
+                        sentence: sentence,
+                        highlights: highlights,
+                        prefs: _prefs,
+                        selectionMode:
+                            _selectionMode && _selectionSentenceId == sentence.id,
+                        bulkSelectMode: _bulkSelectMode,
+                        bulkSelected: _selectedSentenceIds.contains(sentence.id),
+                        onBulkSelectChanged: (selected) =>
+                            _toggleBulkSelection(sentence.id, selected),
+                        onSelectionChanged: (selection, cause) =>
+                            _handleSelection(sentence.id, selection, cause),
+                        onHighlightTap: _editHighlight,
+                        onAction: (action) => _handleSentenceAction(sentence, action),
+                      ),
+                    ),
+                  );
+                },
+                childCount: items.length,
               ),
             ),
-            secondaryBackground: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text('提升熟练度'),
-                  SizedBox(width: 8),
-                  Icon(Icons.trending_up),
-                ],
-              ),
-            ),
-            child: _SentenceBlock(
-              sentence: sentence,
-              highlights: highlights,
-              prefs: _prefs,
-              selectionMode:
-                  _selectionMode && _selectionSentenceId == sentence.id,
-              bulkSelectMode: _bulkSelectMode,
-              bulkSelected: _selectedSentenceIds.contains(sentence.id),
-              onBulkSelectChanged: (selected) =>
-                  _toggleBulkSelection(sentence.id, selected),
-              onSelectionChanged: (selection, cause) =>
-                  _handleSelection(sentence.id, selection, cause),
-              onHighlightTap: _editHighlight,
-              onAction: (action) => _handleSentenceAction(sentence, action),
-            ),
-          );
-        },
+          ),
+        ],
       );
     }
 
     return Stack(
       children: [
         content,
+        if (!_selectionMode && items.isNotEmpty)
+          _buildProgressChip(items.length),
         if (_selectionMode && items.isNotEmpty) _buildSelectionPalette(),
       ],
     );
@@ -388,6 +411,65 @@ class _LearningPageState extends State<LearningPage> {
     final filtered =
         source.where((s) => s.familiarState == _filterState).toList();
     return _sortByCreatedDesc(filtered);
+  }
+
+  Widget _buildProgressChip(int total) {
+    if (total == 0) return const SizedBox.shrink();
+    final current =
+        (_progressIndex == 0 ? 1 : _progressIndex.clamp(1, total)).toInt();
+    final percent = ((current / total) * 100).round();
+    final accent = Colors.amber.shade400;
+    return IgnorePointer(
+      ignoring: true,
+      child: Align(
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: 12 + MediaQuery.of(context).padding.bottom,
+            right: 16,
+          ),
+          child: Text(
+            '$current/$total (${percent}%)',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _scheduleProgressUpdate() {
+    if (_progressUpdateScheduled) return;
+    _progressUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _progressUpdateScheduled = false;
+      if (!mounted) return;
+      _updateProgressFromRender();
+    });
+  }
+
+  void _updateProgressFromRender() {
+    final total = _filterSentences(_sentences).length;
+    var index = 0;
+    final render = _sliverListKey.currentContext?.findRenderObject();
+    if (render is RenderSliverMultiBoxAdaptor) {
+      final firstChild = render.firstChild;
+      if (firstChild != null) {
+        final parentData =
+            firstChild.parentData as SliverMultiBoxAdaptorParentData;
+        index = parentData.index ?? 0;
+      }
+    }
+    final currentIndex =
+        total == 0 ? 0 : (index.clamp(0, total - 1) + 1).toInt();
+    if (_progressIndex != currentIndex || _progressTotal != total) {
+      setState(() {
+        _progressIndex = currentIndex;
+        _progressTotal = total;
+      });
+    }
   }
 
   void _handleSelection(
@@ -803,6 +885,7 @@ class _LearningPageState extends State<LearningPage> {
     });
     await _persistPrefs();
     _maybeRestoreScroll();
+    _scheduleProgressUpdate();
   }
 
   Future<void> _persistPrefs() async {
@@ -843,6 +926,7 @@ class _LearningPageState extends State<LearningPage> {
       _lastPrefsPersistedAt = now;
       unawaited(_persistPrefs());
     }
+    _scheduleProgressUpdate();
   }
 
   void _toggleBulkSelectMode() {
@@ -1205,6 +1289,7 @@ class _LearningPageState extends State<LearningPage> {
         _sortByCreatedDesc(items.where((e) => e.deletedAt == null).toList());
     if (!mounted) return;
     setState(() => _sentences = list);
+    _scheduleProgressUpdate();
   }
 
   void _maybeRestoreScroll() {
@@ -1220,6 +1305,7 @@ class _LearningPageState extends State<LearningPage> {
     _lastScrollOffset = target;
     _scrollController.jumpTo(target);
     _scrollRestored = true;
+    _scheduleProgressUpdate();
   }
 
   Future<void> _persistScrollOffset() async {
