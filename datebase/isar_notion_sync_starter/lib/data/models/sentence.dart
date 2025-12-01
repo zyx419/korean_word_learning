@@ -52,9 +52,6 @@ class Sentence {
               }
             ]
           },
-          'Created': {
-            'date': {'start': createdAt.toIso8601String()}
-          },
           if (externalKey != null && externalKey!.isNotEmpty)
             'ExternalKey': {
               'rich_text': [

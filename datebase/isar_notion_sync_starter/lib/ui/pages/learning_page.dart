@@ -362,7 +362,11 @@ class _LearningPageState extends State<LearningPage> {
 
   List<Sentence> _sortByCreatedDesc(List<Sentence> source) {
     final sorted = List<Sentence>.from(source);
-    sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    sorted.sort((a, b) {
+      final byCreated = b.createdAt.compareTo(a.createdAt);
+      if (byCreated != 0) return byCreated;
+      return b.id.compareTo(a.id); // tie-breaker to keep ordering stable
+    });
     return sorted;
   }
 
