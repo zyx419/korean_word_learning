@@ -36,7 +36,12 @@ class _LearningPageState extends State<LearningPage> {
   int? _selectionSentenceId;
   TextSelection _selection =
       const TextSelection(baseOffset: -1, extentOffset: -1);
-  String? _pendingNote;
+  String _pendingColor = '';
+  Highlight? _editingHighlight;
+  int? _editingSentenceId;
+  TextEditingController? _selectionNoteController;
+  TextEditingController? _editingNoteController;
+  Timer? _noteDebounce;
   bool _bulkSelectMode = false;
   final Set<int> _selectedSentenceIds = {};
   FamiliarState? _filterState;
@@ -45,6 +50,8 @@ class _LearningPageState extends State<LearningPage> {
   double _lastScrollOffset = 0;
   DateTime? _lastPrefsPersistedAt;
   final GlobalKey _sliverListKey = GlobalKey();
+  final GlobalKey _newEditorKey = GlobalKey();
+  final GlobalKey _editEditorKey = GlobalKey();
   int _progressIndex = 0;
   int _progressTotal = 0;
   bool _progressUpdateScheduled = false;
@@ -115,6 +122,9 @@ class _LearningPageState extends State<LearningPage> {
     _persistScrollOffset();
     _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
+    _noteDebounce?.cancel();
+    _selectionNoteController?.dispose();
+    _editingNoteController?.dispose();
     super.dispose();
   }
 
@@ -221,17 +231,36 @@ class _LearningPageState extends State<LearningPage> {
                   final contentMaxWidth =
                       maxWidth >= centerBreakpoint ? 760.0 : double.infinity;
                   final sentenceArea = _buildSentenceArea(isWideLayout: false);
-                  Widget mainContent = sentenceArea;
-                  if (contentMaxWidth.isFinite) {
-                    mainContent = Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: contentMaxWidth),
-                        child: sentenceArea,
+                  final constrained = contentMaxWidth.isFinite
+                      ? Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: contentMaxWidth),
+                            child: sentenceArea,
+                          ),
+                        )
+                      : sentenceArea;
+                  return Stack(
+                    children: [
+                      constrained,
+                      Positioned.fill(
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: (details) {
+                            if (!_selectionMode &&
+                                _editingHighlight == null) {
+                              return;
+                            }
+                            final pos = details.position;
+                            if (_isTapInsideEditor(pos)) return;
+                            _exitSelectionMode();
+                            _closeEditHighlight();
+                          },
+                        ),
                       ),
-                    );
-                  }
-                  return mainContent;
+                    ],
+                  );
                 },
               ),
       ),
@@ -266,6 +295,12 @@ class _LearningPageState extends State<LearningPage> {
                   final sentence = items[index];
                   final highlights = _highlightMap[sentence.id] ?? const [];
                   final isLast = index == items.length - 1;
+                  final showNewEditor = _selectionMode &&
+                      _selectionSentenceId == sentence.id &&
+                      !_selection.isCollapsed;
+                  final showEditEditor =
+                      _editingSentenceId == sentence.id &&
+                          _editingHighlight != null;
                   return Padding(
                     padding: EdgeInsets.only(bottom: isLast ? 0 : paragraphSpacing),
                     child: Dismissible(
@@ -312,20 +347,62 @@ class _LearningPageState extends State<LearningPage> {
                           ],
                         ),
                       ),
-                      child: _SentenceBlock(
-                        sentence: sentence,
-                        highlights: highlights,
-                        prefs: _prefs,
-                        selectionMode:
-                            _selectionMode && _selectionSentenceId == sentence.id,
-                        bulkSelectMode: _bulkSelectMode,
-                        bulkSelected: _selectedSentenceIds.contains(sentence.id),
-                        onBulkSelectChanged: (selected) =>
-                            _toggleBulkSelection(sentence.id, selected),
-                        onSelectionChanged: (selection, cause) =>
-                            _handleSelection(sentence.id, selection, cause),
-                        onHighlightTap: _editHighlight,
-                        onAction: (action) => _handleSentenceAction(sentence, action),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _SentenceBlock(
+                            sentence: sentence,
+                            highlights: highlights,
+                            prefs: _prefs,
+                            selectionMode: _selectionMode &&
+                                _selectionSentenceId == sentence.id,
+                            bulkSelectMode: _bulkSelectMode,
+                            bulkSelected:
+                                _selectedSentenceIds.contains(sentence.id),
+                            onBulkSelectChanged: (selected) =>
+                                _toggleBulkSelection(sentence.id, selected),
+                            onSelectionChanged: (selection, cause) =>
+                                _handleSelection(sentence.id, selection, cause),
+                            onHighlightTap: _editHighlight,
+                            onHighlightDoubleTap: _handleHighlightDoubleTap,
+                            onAction: (action) =>
+                                _handleSentenceAction(sentence, action),
+                          ),
+                          if (showNewEditor)
+                            _InlineHighlightEditor(
+                              key: _newEditorKey,
+                              title: '颜色与备注',
+                              colors: _highlightColors,
+                              selectedColor: _pendingColor,
+                              noteController: _selectionNoteController,
+                              onColorSelected: (color) =>
+                                  _createHighlightFromSelection(
+                                      sentence, color),
+                              onCopyPressed: () =>
+                                  _copySelectionText(sentence),
+                              onColorDoubleTap: () =>
+                                  _copySelectionText(sentence),
+                            ),
+                          if (showEditEditor)
+                            _InlineHighlightEditor(
+                              key: _editEditorKey,
+                              title: '颜色与备注',
+                              colors: _highlightColors,
+                              selectedColor: _editingHighlight!.color,
+                              noteController: _editingNoteController,
+                              onColorSelected: (color) => _updateHighlightColor(
+                                  _editingHighlight!, color),
+                              onCopyPressed: () =>
+                                  _copyEditingHighlightText(_editingHighlight!),
+                              onColorDoubleTap: () =>
+                                  _copyEditingHighlightText(_editingHighlight!),
+                              onDeletePressed: () =>
+                                  _deleteHighlightInline(_editingHighlight!),
+                              onNoteChanged: (value) =>
+                                  _scheduleHighlightNoteUpdate(
+                                      _editingHighlight!, value),
+                            ),
+                        ],
                       ),
                     ),
                   );
@@ -446,14 +523,30 @@ class _LearningPageState extends State<LearningPage> {
       if (!_selectionMode) {
         setState(() {
           _selectionMode = true;
-          _pendingNote = null;
+          _pendingColor = '';
         });
+        _selectionNoteController?.dispose();
+        _selectionNoteController = TextEditingController();
       }
       setState(() {
         _selectionSentenceId = sentenceId;
         _selection = selection;
       });
+      _closeEditHighlight();
     }
+  }
+
+  bool _isTapInsideEditor(Offset globalPosition) {
+    bool inside(GlobalKey key) {
+      final context = key.currentContext;
+      if (context == null) return false;
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) return false;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      return rect.contains(globalPosition);
+    }
+
+    return inside(_newEditorKey) || inside(_editEditorKey);
   }
 
   Widget _buildBulkActionBar() {
@@ -525,98 +618,115 @@ class _LearningPageState extends State<LearningPage> {
   }
 
   Widget _buildSelectionPalette() {
-    final validSelection =
-        !_selection.isCollapsed && _selectionSentenceId != null;
-    if (!validSelection) return const SizedBox.shrink();
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Card(
-          elevation: 6,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Text('颜色与备注',
-                        style: Theme.of(context).textTheme.titleSmall),
-                    const Spacer(),
-                    TextButton(
-                        onPressed: _exitSelectionMode, child: const Text('取消')),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _commitSelectionDraft,
-                      child: const Text('完成'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 12,
-                  children: _highlightColors.entries
-                      .map(
-                        (entry) => _ColorDot(
-                          label: entry.key,
-                          color: entry.value.display,
-                          onTap: () => _createHighlight(entry.key),
-                        ),
-                      )
-                      .toList(),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => _composeNote(),
-                  icon: const Icon(Icons.edit_note_outlined),
-                  label: Text(_pendingNote == null
-                      ? '添加备注'
-                      : '备注：${_pendingNote!.isEmpty ? '（空）' : _pendingNote}'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
-  Future<void> _composeNote() async {
-    final controller = TextEditingController(text: _pendingNote ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('备注'),
-          content: TextField(
-            controller: controller,
-            maxLines: 4,
-            decoration: const InputDecoration(hintText: '输入此高亮的备注'),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消')),
-            TextButton(
-                onPressed: () => Navigator.pop(context, controller.text.trim()),
-                child: const Text('保存')),
-          ],
-        );
-      },
-    );
-    if (result == null) return;
-    setState(() => _pendingNote = result.isEmpty ? null : result);
+  String? _clipTextRange(String text, int start, int end) {
+    if (text.isEmpty) return null;
+    final safeStart = start.clamp(0, text.length);
+    final safeEnd = end.clamp(safeStart, text.length);
+    if (safeStart >= safeEnd) return null;
+    return text.substring(safeStart, safeEnd);
   }
 
-  Future<void> _createHighlight(String color) async {
+  void _closeEditHighlight() {
+    if (_editingHighlight == null) return;
+    setState(() {
+      _editingHighlight = null;
+      _editingSentenceId = null;
+    });
+    _editingNoteController?.dispose();
+    _editingNoteController = null;
+    _noteDebounce?.cancel();
+  }
+
+  Future<void> _createHighlightFromSelection(
+      Sentence sentence, String color) async {
+    if (_selectionSentenceId != sentence.id || _selection.isCollapsed) return;
+    final note = _selectionNoteController?.text.trim();
+    final created = await _createHighlight(
+      color,
+      note: (note?.isEmpty ?? true) ? null : note,
+      exitSelection: false,
+    );
+    if (created == null) return;
+    final noteText = _selectionNoteController?.text ?? '';
+    _exitSelectionMode();
+    setState(() {
+      _editingHighlight = created;
+      _editingSentenceId = sentence.id;
+    });
+    _editingNoteController?.dispose();
+    _editingNoteController = TextEditingController(text: noteText);
+  }
+
+  Future<void> _copySelectionText(Sentence sentence) async {
+    if (_selectionSentenceId != sentence.id || _selection.isCollapsed) return;
+    final text = _clipTextRange(sentence.text, _selection.start, _selection.end);
+    if (text == null || text.isEmpty) return;
+    await _copyHighlightText(text);
+  }
+
+  Future<void> _copyEditingHighlightText(Highlight highlight) async {
+    final text = await _resolveHighlightText(highlight);
+    if (text == null || text.isEmpty) return;
+    await _copyHighlightText(text);
+  }
+
+  Future<void> _updateHighlightColor(Highlight highlight, String color) async {
+    if (highlight.color == color) return;
     final isar = _isar;
     if (isar == null) return;
+    await isar.writeTxn(() async {
+      highlight.color = color;
+      highlight.updatedAtLocal = DateTime.now();
+      highlight.ensureExternalKey();
+      await isar.highlights.put(highlight);
+    });
+    unawaited(_pushHighlightUpdate(highlight));
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _deleteHighlightInline(Highlight highlight) async {
+    final isar = _isar;
+    if (isar == null) return;
+    await isar.writeTxn(() async {
+      final now = DateTime.now();
+      highlight.deletedAt = now;
+      highlight.updatedAtLocal = now;
+      highlight.ensureExternalKey();
+      await isar.highlights.put(highlight);
+    });
+    unawaited(_pushHighlightDeletion(highlight));
+    _closeEditHighlight();
+  }
+
+  void _scheduleHighlightNoteUpdate(Highlight highlight, String rawNote) {
+    final note = rawNote.trim();
+    _noteDebounce?.cancel();
+    _noteDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final isar = _isar;
+      if (isar == null) return;
+      await isar.writeTxn(() async {
+        highlight.note = note.isEmpty ? null : note;
+        highlight.updatedAtLocal = DateTime.now();
+        highlight.ensureExternalKey();
+        await isar.highlights.put(highlight);
+      });
+      unawaited(_pushHighlightUpdate(highlight));
+    });
+  }
+
+  Future<Highlight?> _createHighlight(String color,
+      {String? note, bool exitSelection = true}) async {
+    final isar = _isar;
+    if (isar == null) return null;
     final sentenceId = _selectionSentenceId;
-    if (sentenceId == null || _selection.isCollapsed) return;
+    if (sentenceId == null || _selection.isCollapsed) return null;
     final sentence = await isar.sentences.get(sentenceId);
-    if (sentence == null) return;
+    if (sentence == null) return null;
     Highlight? createdHighlight;
     await isar.writeTxn(() async {
       sentence
@@ -631,16 +741,19 @@ class _LearningPageState extends State<LearningPage> {
         ..start = _selection.start
         ..end = _selection.end
         ..color = color
-        ..note = _pendingNote
+        ..note = note
         ..updatedAtLocal = DateTime.now();
       final newId = await isar.highlights.put(highlight);
       highlight.id = newId;
       createdHighlight = highlight;
     });
-    _exitSelectionMode();
+    if (exitSelection) {
+      _exitSelectionMode();
+    }
     if (createdHighlight != null) {
       unawaited(_pushHighlightUpdate(createdHighlight!));
     }
+    return createdHighlight;
   }
 
   Sentence? _findSentenceById(int id) {
@@ -684,122 +797,29 @@ class _LearningPageState extends State<LearningPage> {
       _selectionMode = false;
       _selectionSentenceId = null;
       _selection = const TextSelection(baseOffset: -1, extentOffset: -1);
-      _pendingNote = null;
     });
-  }
-
-  void _commitSelectionDraft() {
-    if (_selectionSentenceId == null || _selection.isCollapsed) {
-      _exitSelectionMode();
-    } else {
-      _composeNote();
-    }
+    _selectionNoteController?.dispose();
+    _selectionNoteController = null;
   }
 
   Future<void> _editHighlight(Highlight highlight) async {
-    final controller = TextEditingController(text: highlight.note ?? '');
-    String selectedColor = highlight.color;
-    final copyableText = await _resolveHighlightText(highlight);
-    if (!mounted) return;
-    final result = await showModalBottomSheet<_HighlightEditResult>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('颜色与备注', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    children: _highlightColors.entries
-                        .map(
-                          (entry) => ChoiceChip(
-                            label: Text(entry.key),
-                            selected: selectedColor == entry.key,
-                            onSelected: (_) =>
-                                setModalState(() => selectedColor = entry.key),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    decoration: const InputDecoration(labelText: '备注'),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: (copyableText == null || copyableText.isEmpty)
-                        ? null
-                        : () => _copyHighlightText(copyableText),
-                    icon: const Icon(Icons.copy_outlined),
-                    label: const Text('复制所选文本'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(
-                            context, _HighlightEditResult(delete: true)),
-                        style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red),
-                        child: const Text('删除高亮'),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('取消')),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () {
-                          Navigator.pop(
-                            context,
-                            _HighlightEditResult(
-                              color: selectedColor,
-                              note: controller.text.trim(),
-                            ),
-                          );
-                        },
-                        child: const Text('保存'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-    if (result == null) return;
-    final isar = _isar;
-    if (isar == null) return;
-    if (result.delete) {
-      await isar.writeTxn(() async {
-        final now = DateTime.now();
-        highlight.deletedAt = now;
-        highlight.updatedAtLocal = now;
-        highlight.ensureExternalKey();
-        await isar.highlights.put(highlight);
-      });
-      unawaited(_pushHighlightDeletion(highlight));
-    } else {
-      await isar.writeTxn(() async {
-        highlight.color = result.color ?? highlight.color;
-        highlight.note = result.note;
-        highlight.updatedAtLocal = DateTime.now();
-        highlight.ensureExternalKey();
-        await isar.highlights.put(highlight);
-      });
-      unawaited(_pushHighlightUpdate(highlight));
+    if (_editingHighlight?.id == highlight.id) {
+      _closeEditHighlight();
+      return;
     }
+    _exitSelectionMode();
+    setState(() {
+      _editingHighlight = highlight;
+      _editingSentenceId = highlight.sentenceLocalId;
+    });
+    _editingNoteController?.dispose();
+    _editingNoteController = TextEditingController(text: highlight.note ?? '');
+  }
+
+  Future<void> _handleHighlightDoubleTap(Highlight highlight) async {
+    final text = await _resolveHighlightText(highlight);
+    if (text == null || text.isEmpty) return;
+    await _copyHighlightText(text);
   }
 
   Future<void> _handleSentenceAction(
@@ -1629,6 +1649,7 @@ class _SentenceBlock extends StatefulWidget {
     required this.prefs,
     required this.onSelectionChanged,
     required this.onHighlightTap,
+    required this.onHighlightDoubleTap,
     required this.onAction,
     required this.selectionMode,
     required this.bulkSelectMode,
@@ -1644,6 +1665,7 @@ class _SentenceBlock extends StatefulWidget {
   final bool bulkSelected;
   final void Function(TextSelection, SelectionChangedCause?) onSelectionChanged;
   final ValueChanged<Highlight> onHighlightTap;
+  final ValueChanged<Highlight> onHighlightDoubleTap;
   final ValueChanged<_SentenceAction> onAction;
   final ValueChanged<bool> onBulkSelectChanged;
 
@@ -1653,11 +1675,15 @@ class _SentenceBlock extends StatefulWidget {
 
 class _SentenceBlockState extends State<_SentenceBlock> {
   final List<TapGestureRecognizer> _recognizers = [];
+  final List<Timer> _tapTimers = [];
 
   @override
   void dispose() {
     for (final r in _recognizers) {
       r.dispose();
+    }
+    for (final timer in _tapTimers) {
+      timer.cancel();
     }
     super.dispose();
   }
@@ -1667,6 +1693,10 @@ class _SentenceBlockState extends State<_SentenceBlock> {
       r.dispose();
     }
     _recognizers.clear();
+    for (final timer in _tapTimers) {
+      timer.cancel();
+    }
+    _tapTimers.clear();
   }
 
   @override
@@ -1711,32 +1741,6 @@ class _SentenceBlockState extends State<_SentenceBlock> {
                 ),
               ],
             ),
-            if (widget.highlights.any((e) => (e.note ?? '').isNotEmpty)) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final h in widget.highlights)
-                    if ((h.note ?? '').isNotEmpty)
-                      GestureDetector(
-                        onTap: () => widget.onHighlightTap(h),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: (_highlightColors[h.color]?.display ??
-                                    Colors.blue)
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(h.note!,
-                              style: Theme.of(context).textTheme.bodySmall),
-                        ),
-                      ),
-                ],
-              ),
-            ]
           ],
         ),
       ),
@@ -1764,6 +1768,8 @@ class _SentenceBlockState extends State<_SentenceBlock> {
       if (end > start) {
         final color = _highlightColors[h.color] ?? _highlightColors['yellow']!;
         DateTime? tapDownTime;
+        DateTime? lastTapTime;
+        Timer? tapTimer;
         final recognizer = TapGestureRecognizer()
           // Treat short tap as “edit highlight”; let long-press fall through to selection.
           ..onTapDown = (_) {
@@ -1776,9 +1782,26 @@ class _SentenceBlockState extends State<_SentenceBlock> {
             final down = tapDownTime;
             tapDownTime = null;
             if (down == null) return;
-            final elapsed = DateTime.now().difference(down);
+            final now = DateTime.now();
+            final elapsed = now.difference(down);
             if (elapsed < kLongPressTimeout) {
-              widget.onHighlightTap(h);
+              if (lastTapTime != null &&
+                  now.difference(lastTapTime!) <
+                      const Duration(milliseconds: 280)) {
+                tapTimer?.cancel();
+                widget.onHighlightDoubleTap(h);
+                lastTapTime = null;
+              } else {
+                lastTapTime = now;
+                tapTimer?.cancel();
+                tapTimer = Timer(const Duration(milliseconds: 280), () {
+                  if (!mounted) return;
+                  widget.onHighlightTap(h);
+                });
+                if (tapTimer != null) {
+                  _tapTimers.add(tapTimer!);
+                }
+              }
             }
           };
         _recognizers.add(recognizer);
@@ -1799,32 +1822,217 @@ class _SentenceBlockState extends State<_SentenceBlock> {
   }
 }
 
-class _ColorDot extends StatelessWidget {
-  const _ColorDot(
-      {required this.label, required this.color, required this.onTap});
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
+class _InlineHighlightEditor extends StatefulWidget {
+  const _InlineHighlightEditor({
+    super.key,
+    required this.title,
+    required this.colors,
+    required this.selectedColor,
+    required this.noteController,
+    required this.onColorSelected,
+    required this.onCopyPressed,
+    required this.onColorDoubleTap,
+    this.onDeletePressed,
+    this.onNoteChanged,
+  });
+
+  final String title;
+  final Map<String, HighlightVisual> colors;
+  final String selectedColor;
+  final TextEditingController? noteController;
+  final ValueChanged<String> onColorSelected;
+  final VoidCallback onCopyPressed;
+  final VoidCallback onColorDoubleTap;
+  final VoidCallback? onDeletePressed;
+  final ValueChanged<String>? onNoteChanged;
+
+  @override
+  State<_InlineHighlightEditor> createState() => _InlineHighlightEditorState();
+}
+
+class _InlineHighlightEditorState extends State<_InlineHighlightEditor> {
+  bool _editingNote = false;
+  final FocusNode _noteFocus = FocusNode();
+  TextEditingController? _lastController;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachNoteListener();
+    _noteFocus.addListener(() {
+      if (!_noteFocus.hasFocus && _editingNote) {
+        setState(() => _editingNote = false);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineHighlightEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.noteController != widget.noteController) {
+      _detachNoteListener(oldWidget.noteController);
+      _attachNoteListener();
+    }
+  }
+
+  @override
+  void dispose() {
+    _detachNoteListener(widget.noteController);
+    _noteFocus.dispose();
+    super.dispose();
+  }
+
+  void _attachNoteListener() {
+    final controller = widget.noteController;
+    if (controller == null) return;
+    _lastController = controller;
+    controller.addListener(_onNoteTextChanged);
+  }
+
+  void _detachNoteListener(TextEditingController? controller) {
+    if (controller == null) return;
+    controller.removeListener(_onNoteTextChanged);
+    if (_lastController == controller) {
+      _lastController = null;
+    }
+  }
+
+  void _onNoteTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.6),
-              shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.9), width: 2),
-            ),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(widget.title, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final count = widget.colors.length;
+                  final spacing = 12.0;
+                  final minWidth = 40.0;
+                  final maxWidth = 80.0;
+                  final available = constraints.maxWidth;
+                  final itemsPerRow = count == 0
+                      ? 0
+                      : ((available + spacing) / (minWidth + spacing))
+                          .floor()
+                          .clamp(1, count);
+                  final itemWidth = count == 0
+                      ? minWidth
+                      : ((available - spacing * (itemsPerRow - 1)) /
+                              itemsPerRow)
+                          .clamp(minWidth, maxWidth);
+                  return Center(
+                    child: Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: widget.colors.entries.map((entry) {
+                        final isSelected = widget.selectedColor == entry.key;
+                        return GestureDetector(
+                          onTap: () => widget.onColorSelected(entry.key),
+                          onDoubleTap: widget.onColorDoubleTap,
+                          child: Container(
+                            width: itemWidth,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: entry.value.display,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSelected
+                                    ? theme.colorScheme.primary
+                                    : entry.value.display
+                                        .withValues(alpha: 0.9),
+                                width: isSelected ? 3 : 1.5,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              if (_editingNote)
+                TextField(
+                  controller: widget.noteController,
+                  focusNode: _noteFocus,
+                  decoration: const InputDecoration(labelText: '备注'),
+                  maxLines: 3,
+                  onChanged: widget.onNoteChanged,
+                )
+              else
+                Stack(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(12, 12, 36, 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                            color: theme.colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        (widget.noteController?.text ?? '').isEmpty
+                            ? '备注'
+                            : widget.noteController!.text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: (widget.noteController?.text ?? '').isEmpty
+                              ? theme.hintColor
+                              : null,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 24),
+                        onPressed: () {
+                          setState(() => _editingNote = true);
+                          _noteFocus.requestFocus();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: widget.onCopyPressed,
+                    icon: const Icon(Icons.copy_outlined),
+                    label: const Text('复制'),
+                  ),
+                  if (widget.onDeletePressed != null) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: widget.onDeletePressed,
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red),
+                      child: const Text('删除高亮'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ],
+        ),
       ),
     );
   }
@@ -2020,13 +2228,6 @@ class _EmptyState extends StatelessWidget {
 }
 
 enum _SentenceAction { markFamiliar, markUnfamiliar, markNeutral, delete }
-
-class _HighlightEditResult {
-  _HighlightEditResult({this.color, this.note, this.delete = false});
-  final String? color;
-  final String? note;
-  final bool delete;
-}
 
 class ReadingThemeColors {
   const ReadingThemeColors(
