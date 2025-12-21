@@ -123,7 +123,6 @@ class _LearningPageState extends State<LearningPage> {
 
   @override
   Widget build(BuildContext context) {
-    final allVisibleSelected = _areAllVisibleSelected();
     final theme = Theme.of(context);
     final readingTheme = theme.copyWith(
       scaffoldBackgroundColor: _themeColors.background,
@@ -142,21 +141,20 @@ class _LearningPageState extends State<LearningPage> {
           title: const Text('单词学习'),
           backgroundColor: Colors.transparent,
           elevation: 0,
+          bottom: _bulkSelectMode
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(56),
+                  child: _buildBulkActionBar(),
+                )
+              : null,
           actions: [
-            if (_bulkSelectMode)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Center(
-                    child: Text('已选 ${_selectedSentenceIds.length}',
-                        style: Theme.of(context).textTheme.bodyMedium)),
-              ),
             IconButton(
               tooltip: _bulkSelectMode ? '退出批量' : '批量选择',
               icon: Icon(
                   _bulkSelectMode ? Icons.close : Icons.check_box_outlined),
               onPressed: _toggleBulkSelectMode,
             ),
-            if (_filterState != null)
+            if (_filterState != null && !_bulkSelectMode)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Center(
@@ -168,13 +166,6 @@ class _LearningPageState extends State<LearningPage> {
                     ),
                   ),
                 ),
-              ),
-            if (_bulkSelectMode)
-              IconButton(
-                tooltip: allVisibleSelected ? '取消全选' : '全选当前列表',
-                icon: Icon(
-                    allVisibleSelected ? Icons.check_box : Icons.select_all),
-                onPressed: _toggleSelectAllVisible,
               ),
             PopupMenuButton<FamiliarState?>(
               tooltip: '筛选熟练度',
@@ -200,32 +191,7 @@ class _LearningPageState extends State<LearningPage> {
                 ),
               ],
             ),
-            if (_bulkSelectMode) ...[
-              IconButton(
-                tooltip: '标熟',
-                onPressed: () =>
-                    _applyBulkSentenceAction(_SentenceAction.markFamiliar),
-                icon: const Icon(Icons.thumb_up_alt_outlined),
-              ),
-              IconButton(
-                tooltip: '标不熟',
-                onPressed: () =>
-                    _applyBulkSentenceAction(_SentenceAction.markUnfamiliar),
-                icon: const Icon(Icons.warning_amber_outlined),
-              ),
-              IconButton(
-                tooltip: '标一般',
-                onPressed: () =>
-                    _applyBulkSentenceAction(_SentenceAction.markNeutral),
-                icon: const Icon(Icons.circle_outlined),
-              ),
-              IconButton(
-                tooltip: '批量删除',
-                onPressed: () =>
-                    _applyBulkSentenceAction(_SentenceAction.delete),
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ] else ...[
+            if (!_bulkSelectMode)
               PopupMenuButton<String>(
                 tooltip: '页面设置',
                 icon: const Icon(Icons.more_vert),
@@ -244,7 +210,6 @@ class _LearningPageState extends State<LearningPage> {
                   PopupMenuItem(value: 'style', child: Text('阅读样式')),
                 ],
               ),
-            ],
           ],
         ),
         body: _loading
@@ -489,6 +454,74 @@ class _LearningPageState extends State<LearningPage> {
         _selection = selection;
       });
     }
+  }
+
+  Widget _buildBulkActionBar() {
+    final allVisibleSelected = _areAllVisibleSelected();
+    final canDecrease = _canDecreaseSelection();
+    final canIncrease = _canIncreaseSelection();
+    final canClearHighlights = _canClearHighlights();
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: theme.colorScheme.surface.withValues(alpha: 0.9),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '已选 ${_selectedSentenceIds.length}',
+              style: theme.textTheme.bodyMedium,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: '删除',
+                  onPressed: () =>
+                      _applyBulkSentenceAction(_SentenceAction.delete),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+                IconButton(
+                  tooltip: '降低熟练度',
+                  onPressed:
+                      canDecrease ? () => _applyBulkFamiliarityDelta(-1) : null,
+                  icon: const Icon(Icons.arrow_downward),
+                ),
+                IconButton(
+                  tooltip: '提高熟练度',
+                  onPressed:
+                      canIncrease ? () => _applyBulkFamiliarityDelta(1) : null,
+                  icon: const Icon(Icons.arrow_upward),
+                ),
+                IconButton(
+                  tooltip: '清空高亮',
+                  onPressed:
+                      canClearHighlights ? _clearHighlightsForSelection : null,
+                  icon: const Icon(Icons.cleaning_services),
+                ),
+                IconButton(
+                  tooltip: '反选',
+                  onPressed: _invertVisibleSelection,
+                  icon: const Icon(Icons.compare_arrows),
+                ),
+                IconButton(
+                  tooltip: allVisibleSelected ? '取消全选' : '全选',
+                  onPressed: _toggleSelectAllVisible,
+                  icon: Icon(allVisibleSelected
+                      ? Icons.check_box
+                      : Icons.select_all),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSelectionPalette() {
@@ -973,6 +1006,144 @@ class _LearningPageState extends State<LearningPage> {
     });
   }
 
+  void _invertVisibleSelection() {
+    if (!_bulkSelectMode) return;
+    final visible = _filterSentences(_sentences);
+    if (visible.isEmpty) return;
+    setState(() {
+      for (final sentence in visible) {
+        if (_selectedSentenceIds.contains(sentence.id)) {
+          _selectedSentenceIds.remove(sentence.id);
+        } else {
+          _selectedSentenceIds.add(sentence.id);
+        }
+      }
+    });
+  }
+
+  List<Sentence> _selectedSentences() {
+    if (_selectedSentenceIds.isEmpty) return const [];
+    return _sentences
+        .where((sentence) => _selectedSentenceIds.contains(sentence.id))
+        .toList();
+  }
+
+  bool _canDecreaseSelection() {
+    return _selectedSentences()
+        .any((sentence) => sentence.familiarState != FamiliarState.unfamiliar);
+  }
+
+  bool _canIncreaseSelection() {
+    return _selectedSentences()
+        .any((sentence) => sentence.familiarState != FamiliarState.familiar);
+  }
+
+  bool _canClearHighlights() {
+    if (_selectedSentenceIds.isEmpty) return false;
+    for (final id in _selectedSentenceIds) {
+      if ((_highlightMap[id]?.isNotEmpty ?? false)) return true;
+    }
+    return false;
+  }
+
+  Future<void> _applyBulkFamiliarityDelta(int delta) async {
+    if (!_bulkSelectMode || _selectedSentenceIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先选择句子')));
+      return;
+    }
+    final isar = _isar;
+    if (isar == null) return;
+    final ids = List<int>.from(_selectedSentenceIds);
+    final toUpsert = <Sentence>[];
+    await isar.writeTxn(() async {
+      for (final id in ids) {
+        final sentence = await isar.sentences.get(id);
+        if (sentence == null) continue;
+        final next = delta > 0
+            ? _nextFamiliarState(sentence.familiarState)
+            : _previousFamiliarState(sentence.familiarState);
+        if (next == sentence.familiarState) continue;
+        sentence.familiarState = next;
+        sentence.updatedAtLocal = DateTime.now();
+        await isar.sentences.put(sentence);
+        toUpsert.add(sentence);
+      }
+    });
+    for (final sentence in toUpsert) {
+      await _enqueueSentenceSync(sentence);
+    }
+    await _reloadSentences();
+    setState(() {
+      _selectedSentenceIds.clear();
+      _bulkSelectMode = false;
+    });
+  }
+
+  Future<void> _clearHighlightsForSelection() async {
+    if (!_bulkSelectMode || _selectedSentenceIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先选择句子')));
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('清空高亮'),
+            content: Text('确认清空选中的 ${_selectedSentenceIds.length} 条句子高亮吗？'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消')),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('清空'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final isar = _isar;
+    if (isar == null) return;
+    final ids = List<int>.from(_selectedSentenceIds);
+    final highlights = <Highlight>[];
+    for (final id in ids) {
+      final items = await isar.highlights
+          .filter()
+          .sentenceLocalIdEqualTo(id)
+          .and()
+          .deletedAtIsNull()
+          .findAll();
+      highlights.addAll(items);
+    }
+    if (highlights.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('没有可清空的高亮')));
+      return;
+    }
+    await isar.writeTxn(() async {
+      final now = DateTime.now();
+      for (final highlight in highlights) {
+        highlight.deletedAt = now;
+        highlight.updatedAtLocal = now;
+        highlight.ensureExternalKey();
+        await isar.highlights.put(highlight);
+      }
+    });
+    for (final highlight in highlights) {
+      await _enqueueHighlightDeletion(highlight);
+    }
+    await _reloadSentences();
+    setState(() {
+      _selectedSentenceIds.clear();
+      _bulkSelectMode = false;
+    });
+  }
+
   Future<void> _enqueueSentenceSync(Sentence sentence, {String? op}) async {
     final scheduler = _scheduler;
     if (scheduler == null) return;
@@ -1396,6 +1567,17 @@ class _LearningPageState extends State<LearningPage> {
         return FamiliarState.familiar;
       case FamiliarState.familiar:
         return FamiliarState.familiar;
+    }
+  }
+
+  FamiliarState _previousFamiliarState(FamiliarState current) {
+    switch (current) {
+      case FamiliarState.familiar:
+        return FamiliarState.neutral;
+      case FamiliarState.neutral:
+        return FamiliarState.unfamiliar;
+      case FamiliarState.unfamiliar:
+        return FamiliarState.unfamiliar;
     }
   }
 
