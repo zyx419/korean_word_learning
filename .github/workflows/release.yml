@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute tag
+        id: tag
+        shell: bash
+        run: |
+          prefix="v1.1"
+          last=$(git tag -l "${prefix}.*" | sort -V | tail -n 1)
+          if [[ -z "$last" ]]; then
+            next="${prefix}.0"
+          else
+            patch="${last##*.}"
+            next="${prefix}.$((patch + 1))"
+          fi
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
