@@ -49,3 +49,7 @@ app.*.map.json
 scripts.local/
 debug_verify.txt
 data/sample_sentences.txt
+
+# Allow vendored package override for CI
+!vendor/
+!vendor/**

@@ -26,5 +26,9 @@ dependency_overrides:
   isar_flutter_libs:
     path: vendor/isar_flutter_libs_local
 
+dependency_overrides:
+  isar_flutter_libs:
+    path: vendor/isar_flutter_libs_local
+
 flutter:
   uses-material-design: true
