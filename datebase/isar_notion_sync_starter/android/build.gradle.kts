@@ -27,14 +27,18 @@ tasks.register<Delete>("clean") {
 
 // Inject namespace for third-party libraries that miss it (AGP 8+ requirement)
 subprojects {
-    if (name == "isar_flutter_libs") {
-        plugins.withId("com.android.library") {
-            extensions.configure<LibraryExtension> {
-                namespace = "com.isar_flutter_libs"
-                compileSdk = 36
-                buildToolsVersion = "36.0.0"
+    pluginManager.withPlugin("com.android.library") {
+        extensions.configure<LibraryExtension> {
+            compileSdk = 36
+            buildToolsVersion = "36.0.0"
+            if (name == "isar_flutter_libs" || group.toString() == "dev.isar.isar_flutter_libs") {
+                if (namespace.isNullOrBlank()) {
+                    namespace = "dev.isar.isar_flutter_libs"
+                }
             }
         }
+    }
+    if (name == "isar_flutter_libs" || group.toString() == "dev.isar.isar_flutter_libs") {
         // Remove deprecated manifest package attribute to satisfy AGP 8+
         afterEvaluate {
             val manifestFile = file("src/main/AndroidManifest.xml")
@@ -45,15 +49,6 @@ subprojects {
                     manifestFile.writeText(updated)
                 }
             }
-        }
-    }
-}
-
-subprojects {
-    plugins.withId("com.android.library") {
-        extensions.configure<LibraryExtension> {
-            compileSdk = 36
-            buildToolsVersion = "36.0.0"
         }
     }
 }
